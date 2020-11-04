@@ -6,7 +6,9 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -21,11 +23,13 @@ var (
 
 var (
 	QueryPath            = "/query"
-	ExecPath             = "/exec"
+	ExecPath             = "/ksql"
 	QueryStreamPath      = "/query-stream"
 	CloseQueryPath       = "/close-query"
 	InsertsStreamPath    = "/inserts-stream"
 	TerminateClusterPath = "/ksql/terminate"
+	InfoPath             = "/info"
+	HealthCheckPath      = "/healthcheck"
 )
 
 // StreamsProperties is a map of property overrides
@@ -280,7 +284,7 @@ type ExecResult struct {
 	OverriddenProperties map[string]interface{} `json:"overriddenProperties,omitempty"`
 }
 
-// Exec runs a KSQL statement which can be anything expect SELECT
+// Exec runs KSQL statements which can be anything except SELECT
 func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
@@ -293,11 +297,19 @@ func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, er
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to make Exec request: %w", err)
 	}
 	var results []ExecResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, err
+	by, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read response body: %w", err)
+	}
+	if err := json.Unmarshal(by, &results); err != nil {
+		var result ExecResult
+		if err := json.Unmarshal(by, &result); err != nil {
+			return nil, fmt.Errorf("unable to decode JSON response '%s': %w", string(by), err)
+		}
+		results = append(results, result)
 	}
 	return results, nil
 }
@@ -441,6 +453,25 @@ func (c Client) TerminateCluster(ctx context.Context, payload TerminateClusterPa
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+type InfoResult map[string]interface{}
+
+func (c Client) Info(ctx context.Context) (InfoResult, error) {
+	result := InfoResult{}
+	req, err := c.makeRequest(ctx, InfoPath, http.MethodGet, nil)
+	if err != nil {
+		return result, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return result, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // Close gracefully closes all open connections in order to reuse TCP connections via keep-alive
