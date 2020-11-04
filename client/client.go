@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql/driver"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -95,17 +97,45 @@ func (c Client) Query(ctx context.Context, payload QueryPayload) (*Rows, error) 
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, QueryPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, QueryStreamPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
+	req.TransferEncoding = []string{"identity"}
+	conn, err := net.Dial("tcp", "0.0.0.0:8088")
 	if err != nil {
 		return nil, err
 	}
-	r := NewRows(resp.Body)
-	c.rows = append(c.rows, r)
-	return r, nil
+	err = req.Write(conn)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	buf := bufio.NewReader(conn)
+	for {
+		// s, err := buf.ReadString('\n')
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// fmt.Println(s)
+		resp, err := http.ReadResponse(buf, req)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read response: %w", err)
+		}
+		resp.Header.Set("Transfer-Encoding", "identity")
+		respBytes := make([]byte, 1000)
+		n, err := resp.Body.Read(respBytes)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Println(fmt.Errorf("unable to read resp body: %w", err))
+				continue
+			}
+			// return nil, fmt.Errorf("unable to read resp body: %w", err)
+		}
+		fmt.Printf("READ: %d bytes", n)
+		fmt.Println(string(respBytes))
+	}
+	return nil, errors.New("Yes")
 }
 
 // ExecPayload represents the JSON payload for the /ksql endpoint
