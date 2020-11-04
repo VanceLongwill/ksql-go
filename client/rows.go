@@ -36,7 +36,7 @@ func (r *Rows) Columns() []string {
 func (r *Rows) Next(dest []driver.Value) error {
 	var m QueryResult
 	if err := r.dec.Decode(&m); err != nil {
-		return nil
+		return err
 	}
 	copy(m.Row.Columns, dest)
 	if len(dest) != len(m.Row.Columns) {

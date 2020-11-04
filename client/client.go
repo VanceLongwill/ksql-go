@@ -1,12 +1,16 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -21,11 +25,13 @@ var (
 
 var (
 	QueryPath            = "/query"
-	ExecPath             = "/exec"
+	ExecPath             = "/ksql"
 	QueryStreamPath      = "/query-stream"
 	CloseQueryPath       = "/close-query"
 	InsertsStreamPath    = "/inserts-stream"
 	TerminateClusterPath = "/ksql/terminate"
+	InfoPath             = "/info"
+	HealthCheckPath      = "/healthcheck"
 )
 
 // StreamsProperties is a map of property overrides
@@ -91,17 +97,45 @@ func (c Client) Query(ctx context.Context, payload QueryPayload) (*Rows, error) 
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, QueryPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, QueryStreamPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
+	req.TransferEncoding = []string{"identity"}
+	conn, err := net.Dial("tcp", "0.0.0.0:8088")
 	if err != nil {
 		return nil, err
 	}
-	r := NewRows(resp.Body)
-	c.rows = append(c.rows, r)
-	return r, nil
+	err = req.Write(conn)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	buf := bufio.NewReader(conn)
+	for {
+		// s, err := buf.ReadString('\n')
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// fmt.Println(s)
+		resp, err := http.ReadResponse(buf, req)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read response: %w", err)
+		}
+		resp.Header.Set("Transfer-Encoding", "identity")
+		respBytes := make([]byte, 1000)
+		n, err := resp.Body.Read(respBytes)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Println(fmt.Errorf("unable to read resp body: %w", err))
+				continue
+			}
+			// return nil, fmt.Errorf("unable to read resp body: %w", err)
+		}
+		fmt.Printf("READ: %d bytes", n)
+		fmt.Println(string(respBytes))
+	}
+	return nil, errors.New("Yes")
 }
 
 // ExecPayload represents the JSON payload for the /ksql endpoint
@@ -280,7 +314,7 @@ type ExecResult struct {
 	OverriddenProperties map[string]interface{} `json:"overriddenProperties,omitempty"`
 }
 
-// Exec runs a KSQL statement which can be anything expect SELECT
+// Exec runs KSQL statements which can be anything except SELECT
 func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
@@ -293,11 +327,19 @@ func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, er
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to make Exec request: %w", err)
 	}
 	var results []ExecResult
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
-		return nil, err
+	by, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read response body: %w", err)
+	}
+	if err := json.Unmarshal(by, &results); err != nil {
+		var result ExecResult
+		if err := json.Unmarshal(by, &result); err != nil {
+			return nil, fmt.Errorf("unable to decode JSON response '%s': %w", string(by), err)
+		}
+		results = append(results, result)
 	}
 	return results, nil
 }
@@ -441,6 +483,25 @@ func (c Client) TerminateCluster(ctx context.Context, payload TerminateClusterPa
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+type InfoResult map[string]interface{}
+
+func (c Client) Info(ctx context.Context) (InfoResult, error) {
+	result := InfoResult{}
+	req, err := c.makeRequest(ctx, InfoPath, http.MethodGet, nil)
+	if err != nil {
+		return result, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return result, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // Close gracefully closes all open connections in order to reuse TCP connections via keep-alive
