@@ -1,4 +1,4 @@
-package ksql
+package stdlib
 
 import (
 	"context"

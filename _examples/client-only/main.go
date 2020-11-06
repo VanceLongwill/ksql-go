@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
-	ksql "github.com/vancelongwill/ksql/client"
+	"github.com/vancelongwill/ksql"
 )
 
 var (
@@ -81,17 +83,17 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// fmt.Println("Creating stream")
-	// _, err = db.Exec(ctx, ksql.ExecPayload{
-	// 	KSQL: createStream,
-	// 	StreamsProperties: ksql.StreamsProperties{
-	// 		"auto.offset.reset": "earliest",
-	// 	},
-	// })
-	// if err != nil {
-	// 	return err
+	fmt.Println("Creating stream")
+	_, err = db.Exec(ctx, ksql.ExecPayload{
+		KSQL: createStream,
+		StreamsProperties: ksql.StreamsProperties{
+			"auto.offset.reset": "earliest",
+		},
+	})
+	if err != nil {
+		return err
 
-	// }
+	}
 	// fmt.Println("Inserting data")
 	// _, err = db.Exec(ctx, ksql.ExecPayload{
 	// 	KSQL: insertData,
@@ -99,32 +101,48 @@ func run(ctx context.Context) error {
 	// if err != nil {
 	// 	return err
 	// }
-	// fmt.Println("Creating table based on stream")
-	// _, err = db.Exec(ctx, ksql.ExecPayload{
-	// 	KSQL: createTable,
-	// })
-	// if err != nil {
-	// 	return err
-	// }
-	fmt.Println("Querying table")
-	result, err := db.Query(ctx, ksql.QueryPayload{
-		KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
-		StreamsProperties: ksql.StreamsProperties{
-			"auto.offset.reset": "earliest",
-		},
+	fmt.Println("Creating table based on stream")
+	_, err = db.Exec(ctx, ksql.ExecPayload{
+		KSQL: createTable,
 	})
 	if err != nil {
 		return err
 	}
-	// defer result.Close()
-	dest := make([]driver.Value, 4)
-	for err := result.Next(dest); err == nil; {
-		fmt.Println("DEST", dest)
-	}
+	fmt.Println("Querying table")
+	rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
+		KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
+		// Properties: map[string]string{
+		// 	"auto.offset.reset": "earliest",
+		// },
+	})
 	if err != nil {
 		return err
 	}
-	// read stream
+	go func() {
+		time.Sleep(time.Second * 5)
+		fmt.Println("Closing stream")
+		err := rows.Close()
+		if err != nil {
+			fmt.Printf("Error closing: %v\n", err)
+			return
+		}
+		fmt.Println("Closed successfully")
+	}()
+
+	fmt.Println("Streaming results")
+	dest := make([]driver.Value, 4)
+	for {
+		err = rows.Next(dest)
+		if err != nil {
+			break
+		}
+		fmt.Println(dest)
+	}
+	if errors.Is(err, ksql.ErrRowsClosed) {
+		fmt.Println("Done")
+	} else {
+		fmt.Println(err)
+	}
 	return nil
 }
 
