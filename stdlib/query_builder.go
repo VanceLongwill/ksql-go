@@ -1,4 +1,4 @@
-package ksql
+package stdlib
 
 import (
 	"database/sql/driver"
@@ -6,8 +6,6 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-
-	"github.com/vancelongwill/ksql/client"
 )
 
 var (
@@ -22,9 +20,6 @@ func buildStatement(q string, args []driver.NamedValue) (string, error) {
 	var replacements []string
 
 	for _, arg := range args {
-		if _, ok := arg.Value.(client.StreamsProperties); ok {
-			continue
-		}
 		b, err := json.Marshal(arg.Value)
 		if err != nil {
 			return "", err

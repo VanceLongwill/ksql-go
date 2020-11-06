@@ -1,9 +1,9 @@
-package client
+package ksql
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -34,13 +36,10 @@ var (
 	HealthCheckPath      = "/healthcheck"
 )
 
-// StreamsProperties is a map of property overrides
-// https://docs.ksqldb.io/en/latest/operate-and-deploy/installation/server-config/config-reference/
-type StreamsProperties map[string]string
-
 // Client is a ksqlDB client
 type Client struct {
 	client               *http.Client
+	http2                *http.Client
 	baseURL              string
 	rows                 []*Rows
 	insertsStreamWriters []*InsertsStreamWriter
@@ -63,7 +62,6 @@ func (c Client) makeRequest(ctx context.Context, urlPath string, method string, 
 	default:
 		req.Header.Add("Accept", "application/vnd.ksql.v1+json")
 		req.Header.Add("Content-Type", "application/vnd.ksql.v1+json")
-
 	}
 	return req, nil
 
@@ -72,7 +70,7 @@ func (c Client) makeRequest(ctx context.Context, urlPath string, method string, 
 // QueryPayload represents the JSON payload for the POST /query endpoint
 type QueryPayload struct {
 	// KSQL is SELECT statement
-	KSQL string `json:"ksql"`
+	KSQL string `json:"sql"`
 	// StreamsProperties is a map of property overrides
 	StreamsProperties StreamsProperties `json:"streamsProperties,omitempty"`
 }
@@ -97,45 +95,38 @@ func (c Client) Query(ctx context.Context, payload QueryPayload) (*Rows, error) 
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, QueryStreamPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, QueryPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
-	req.TransferEncoding = []string{"identity"}
-	conn, err := net.Dial("tcp", "0.0.0.0:8088")
+	resp, err := c.client.Do(req)
 	if err != nil {
+		return nil, fmt.Errorf("unable to get response: %w", err)
+	}
+	dec := json.NewDecoder(resp.Body)
+	var resultsRaw []interface{}
+	if err := dec.Decode(&resultsRaw); err != nil {
 		return nil, err
 	}
-	err = req.Write(conn)
-	if err != nil {
+	var colNames []string
+	if headerMap, ok := resultsRaw[0].(map[string]map[string]string); ok {
+		fmt.Println(headerMap)
+		schema := headerMap["header"]["schema"]
+		colNames = parseSchemaKeys(schema)
+	}
+	empt := &Emptier{resp.Body}
+	defer empt.Close()
+	buf := bytes.Buffer{}
+	if err = json.NewEncoder(&buf).Encode(resultsRaw[1:]); err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	buf := bufio.NewReader(conn)
-	for {
-		// s, err := buf.ReadString('\n')
-		// if err != nil {
-		// 	return nil, err
-		// }
-		// fmt.Println(s)
-		resp, err := http.ReadResponse(buf, req)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read response: %w", err)
-		}
-		resp.Header.Set("Transfer-Encoding", "identity")
-		respBytes := make([]byte, 1000)
-		n, err := resp.Body.Read(respBytes)
-		if err != nil {
-			if err != io.EOF {
-				fmt.Println(fmt.Errorf("unable to read resp body: %w", err))
-				continue
-			}
-			// return nil, fmt.Errorf("unable to read resp body: %w", err)
-		}
-		fmt.Printf("READ: %d bytes", n)
-		fmt.Println(string(respBytes))
+	r := &Rows{
+		ctx:      ctx,
+		dec:      json.NewDecoder(&buf),
+		colCount: len(colNames),
+		colNames: colNames,
 	}
-	return nil, errors.New("Yes")
+	return r, nil
 }
 
 // ExecPayload represents the JSON payload for the /ksql endpoint
@@ -344,8 +335,8 @@ func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, er
 	return results, nil
 }
 
-// QueryStreamResultHeader is a header object which contains details of the push & pull query results
-type QueryStreamResultHeader struct {
+// QueryResultHeader is a header object which contains details of the push & pull query results
+type QueryResultHeader struct {
 	// QueryID is a unique ID, provided for push queries only
 	QueryID string `json:"queryID"`
 	// ColumnNames is a list of column names
@@ -390,23 +381,26 @@ func (c Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*R
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.http2.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to get response: %w", err)
 	}
 	dec := json.NewDecoder(resp.Body)
-	var header QueryStreamResultHeader
+	var header QueryResultHeader
 	if err := dec.Decode(&header); err != nil {
 		return nil, err
 	}
-	r := NewRows(&queryStreamReadCloser{
-		queryID: header.QueryID,
-		body:    resp.Body,
-		client:  c,
-	})
-	r.colCount = len(header.ColumnNames)
-	r.colNames = header.ColumnNames
-
+	r := &Rows{
+		ctx: ctx,
+		body: &queryStreamReadCloser{
+			queryID: header.QueryID,
+			body:    resp.Body,
+			client:  c,
+		},
+		dec:      dec,
+		colCount: len(header.ColumnNames),
+		colNames: header.ColumnNames,
+	}
 	c.rows = append(c.rows, r)
 	return r, nil
 }
@@ -504,6 +498,35 @@ func (c Client) Info(ctx context.Context) (InfoResult, error) {
 	return result, nil
 }
 
+type HealthCheckResult struct {
+	IsHealthy bool `json:"isHealthy"`
+	Details   struct {
+		Metastore struct {
+			IsHealthy bool `json:"isHealthy"`
+		} `json:"metastore"`
+		Kafka struct {
+			IsHealthy bool `json:"isHealthy"`
+		} `json:"kafka"`
+	} `json:"details"`
+}
+
+func (c Client) Healthcheck(ctx context.Context) (HealthCheckResult, error) {
+	result := HealthCheckResult{}
+	req, err := c.makeRequest(ctx, InfoPath, http.MethodGet, nil)
+	if err != nil {
+		return result, err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return result, err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 // Close gracefully closes all open connections in order to reuse TCP connections via keep-alive
 func (c Client) Close() error {
 	for _, rows := range c.rows {
@@ -530,6 +553,14 @@ func New(connString string) *Client {
 	client := &Client{
 		baseURL: connString,
 		client:  http.DefaultClient,
+		http2: &http.Client{
+			Transport: &http2.Transport{
+				AllowHTTP: true,
+				DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
+					return net.Dial(network, addr)
+				},
+			},
+		},
 	}
 	return client
 }
