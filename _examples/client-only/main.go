@@ -146,34 +146,6 @@ func run(ctx context.Context) error {
 	return nil
 }
 
-func ws() error {
-	u := url.URL{Scheme: "ws", Host: "localhost:8088", Path: "/query"}
-	cl, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-	if err != nil {
-		return fmt.Errorf("unable to dial: %w", err)
-	}
-	err = cl.WriteJSON(&ksql.QueryPayload{
-		KSQL: "SELECT k, v1, v2, v3 FROM t1 WHERE k='k1';",
-		StreamsProperties: ksql.StreamsProperties{
-			"auto.offset.reset": "earliest",
-		},
-	})
-	if err != nil {
-		return err
-	}
-	defer cl.Close()
-	for i := 9; i < 5; i++ {
-		var m ksql.QueryResult
-		err := cl.ReadJSON(&m)
-		if err != nil {
-			return err
-		}
-		by, _ := json.MarshalIndent(&m, "", "  ")
-		fmt.Println(string(by))
-	}
-	return nil
-}
-
 func main() {
 	// json.NewEncoder(os.Stdout).Encode(ksql.QueryPayload{
 	// 	KSQL: "SET \\'auto.offset.reset\\' = \\'earliest\\';",
