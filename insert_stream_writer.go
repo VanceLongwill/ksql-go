@@ -1,57 +1,84 @@
 package ksql
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"sync"
 	"time"
 )
 
 type InsertsStreamWriter struct {
 	mu      sync.Mutex
+	ctx     context.Context
+	conn    net.Conn
 	req     io.Writer
-	resp    io.ReadCloser
+	resp    io.Reader
 	acks    map[int64]string
-	dec     *json.Decoder
+	enc     *json.Encoder
+	s       *bufio.Scanner
 	err     error
 	curr    int64
 	timeout time.Duration
 }
 
-var newLineBytes = []byte("\n")
-
 // Write a JSON object representing the values to insert
-func (i *InsertsStreamWriter) Write(p []byte) (int, error) {
+func (i *InsertsStreamWriter) WriteJSON(p interface{}) error {
 	i.mu.Lock()
 	defer func() {
 		i.curr++ // increment the sequence number
 		i.mu.Unlock()
 	}()
 	if i.err != nil {
-		return 0, i.err
+		return i.err
 	}
-	n, err := i.req.Write(p)
-	if err != nil {
-		return 0, err
+	if err := i.enc.Encode(p); err != nil {
+		return err
 	}
-	nl, err := i.req.Write(newLineBytes)
-	if err != nil {
-		return n, err
-	}
-	n += nl
-
-	ctx, cancel := context.WithTimeout(context.Background(), i.timeout)
-	defer cancel()
-	if err := i.readAcksUntil(ctx); err != nil {
-		if err == context.DeadlineExceeded {
-			return 0, fmt.Errorf("timed out while waiting for ACK: %w", err)
+	return nil
+	// ctx, cancel := context.WithTimeout(context.Background(), i.timeout)
+	// defer cancel()
+	if status, ok := i.acks[i.curr]; ok {
+		if status == "ok" {
+			return nil
+		} else {
+			return ErrAckUnsucessful
 		}
-		return 0, err
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		defer close(errCh)
+		for {
+			if err := i.readAck(i.curr); err == nil {
+				errCh <- err
+				return
+			}
+		}
+		// fmt.Printf("abc %#v\n", i.acks)
+	}()
+
+	timer := time.NewTimer(i.timeout)
+	defer timer.Stop()
+	select {
+	case err := <-errCh:
+		return err
+	case <-timer.C:
+		return errors.New("timeout exceeded")
+	case <-i.ctx.Done():
+		return i.ctx.Err()
 	}
 
-	return n, nil
+	// if err := i.readAcksUntil(ctx); err != nil {
+	// 	if err == context.DeadlineExceeded {
+	// 		return fmt.Errorf("timed out while waiting for ACK: %w", err)
+	// 	}
+	// 	return err
+	// }
 }
 
 func (i *InsertsStreamWriter) readAcksUntil(ctx context.Context) error {
@@ -59,9 +86,13 @@ func (i *InsertsStreamWriter) readAcksUntil(ctx context.Context) error {
 	defer ticker.Stop()
 	for {
 		select {
+		case <-i.ctx.Done():
+			return ctx.Err()
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			// fmt.Println("tick")
+			// fmt.Printf("%#v \n", i.acks)
 			if status, ok := i.acks[i.curr]; ok {
 				if status == "ok" {
 					return nil
@@ -69,37 +100,62 @@ func (i *InsertsStreamWriter) readAcksUntil(ctx context.Context) error {
 					return ErrAckUnsucessful
 				}
 			}
-			if err := i.readAck(); err != nil {
+			if err := i.readAck(8); err != nil {
 				return err
 			}
-
 		}
 	}
 }
 
-func (i *InsertsStreamWriter) readAck() error {
+func (i *InsertsStreamWriter) readAck(n int64) error {
 	var ack InsertsStreamAck
-	if err := i.dec.Decode(&ack); err != nil {
+	sc := bufio.NewScanner(i.resp)
+	if len(sc.Bytes()) > 0 {
+		fmt.Println("FIESTY", sc.Bytes())
+	}
+	// fmt.Println("here1")
+	for sc.Scan() {
+		fmt.Println("here")
+		if b := i.s.Bytes(); len(b) > 0 {
+			fmt.Println("BBB", b)
+			if err := json.Unmarshal(i.s.Bytes(), &ack); err != nil {
+				return fmt.Errorf("unable to decode ack %w", err)
+			}
+			fmt.Printf("Found ack %#v\n", ack)
+			i.acks[ack.Seq] = ack.Status
+			if ack.Seq == n {
+				return nil
+			}
+		}
+	}
+	if err := i.s.Err(); err != nil {
 		return err
 	}
-	i.acks[ack.Seq] = ack.Status
-	return nil
+	// if err := json.NewDecoder(i.resp).Decode(&ack); err != nil {
+	// 	if errors.Is(err, io.EOF) {
+	// 		return nil
+	// 	}
+	// 	return err
+	// }
+	return errors.New("Couldn't get ack")
 }
 
 func (i *InsertsStreamWriter) Close() error {
-	if err := i.resp.Close(); err != nil {
-		return err
-	}
+	// if err := i.conn.Close(); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
-func newInsertStreamWriter(req io.Writer, resp io.ReadCloser) *InsertsStreamWriter {
+func newInsertStreamWriter(ctx context.Context, req io.Writer, resp io.Reader) *InsertsStreamWriter {
 	i := &InsertsStreamWriter{}
+	i.ctx = ctx
 	i.mu = sync.Mutex{}
 	i.acks = map[int64]string{}
-	i.req = req
-	i.resp = Emptier{resp}
-	i.dec = json.NewDecoder(i.resp)
-	i.timeout = 5 * time.Second
+	// i.conn = conn
+	i.resp = io.TeeReader(resp, os.Stdout)
+	i.s = bufio.NewScanner(bufio.NewReader(i.resp))
+	i.enc = json.NewEncoder(req)
+	i.timeout = 15 * time.Second
 	return i
 }

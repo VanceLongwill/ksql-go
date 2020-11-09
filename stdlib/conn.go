@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"strconv"
 
 	"github.com/vancelongwill/ksql"
 )
@@ -132,7 +133,7 @@ func (c *Conn) Client() *ksql.Client {
 func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	c.stmtNameCounter++
 	return PreparedStatement{
-		Name: string(c.stmtNameCounter),
+		Name: strconv.Itoa(c.stmtNameCounter),
 		SQL:  query,
 		conn: c,
 	}, nil

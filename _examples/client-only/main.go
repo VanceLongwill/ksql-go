@@ -2,16 +2,18 @@ package main
 
 import (
 	"context"
-	"database/sql/driver"
-	"encoding/json"
-	"errors"
+	"math/rand"
+	"strconv"
+	// "database/sql/driver"
+	// "errors"
 	"fmt"
 	"log"
-	"net/url"
+	"os"
+	"os/signal"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/vancelongwill/ksql"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -67,6 +69,13 @@ INSERT INTO s1 (
 );`
 )
 
+type DataRow struct {
+	K  string `json:"k"`
+	V1 int    `json:"v1"`
+	V2 string `json:"v2"`
+	V3 bool   `json:"v3"`
+}
+
 func run(ctx context.Context) error {
 	db := ksql.New("http://0.0.0.0:8088/")
 
@@ -74,16 +83,16 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(info)
+	log.Println(info)
 
-	fmt.Println("Setting offset to earliest")
+	log.Println("Setting offset to earliest")
 	_, err = db.Exec(ctx, ksql.ExecPayload{
 		KSQL: "SET 'auto.offset.reset' = 'earliest';",
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Println("Creating stream")
+	log.Println("Creating stream")
 	_, err = db.Exec(ctx, ksql.ExecPayload{
 		KSQL: createStream,
 		StreamsProperties: ksql.StreamsProperties{
@@ -94,68 +103,102 @@ func run(ctx context.Context) error {
 		return err
 
 	}
-	// fmt.Println("Inserting data")
-	// _, err = db.Exec(ctx, ksql.ExecPayload{
-	// 	KSQL: insertData,
-	// })
-	// if err != nil {
-	// 	return err
-	// }
-	fmt.Println("Creating table based on stream")
+	log.Println("Inserting data")
+	_, err = db.Exec(ctx, ksql.ExecPayload{
+		KSQL: insertData,
+	})
+	if err != nil {
+		return err
+	}
+	log.Println("Creating table based on stream")
 	_, err = db.Exec(ctx, ksql.ExecPayload{
 		KSQL: createTable,
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Println("Querying table")
-	rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
-		KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
-		// Properties: map[string]string{
-		// 	"auto.offset.reset": "earliest",
-		// },
-	})
-	if err != nil {
-		return err
-	}
-	go func() {
-		time.Sleep(time.Second * 5)
-		fmt.Println("Closing stream")
-		err := rows.Close()
+
+	g, _ := errgroup.WithContext(ctx)
+
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
+	g.Go(func() error {
+		log.Println("Inserting via stream")
+		wtr, err := db.InsertsStream(ctx, ksql.InsertsStreamTargetPayload{Target: "s1"})
 		if err != nil {
-			fmt.Printf("Error closing: %v\n", err)
-			return
+			return fmt.Errorf("unable to open insert stream: %w", err)
 		}
-		fmt.Println("Closed successfully")
+		time.Sleep(2 * time.Second)
+		defer wtr.Close()
+		dataRows := []DataRow{
+			{K: strconv.Itoa(r1.Int()), V1: 99, V2: "yes", V3: true},
+			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
+			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
+		}
+		for _, r := range dataRows {
+			log.Printf("Writing item %#v", r)
+			if err := wtr.WriteJSON(&r); err != nil {
+				return fmt.Errorf("unable to write item %#v to stream: %w", r, err)
+			}
+		}
+		return nil
+	})
+
+	// g.Go(func() error {
+	// 	log.Println("Querying table")
+	// 	rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
+	// 		KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
+	// 	})
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	defer rows.Close()
+
+	// 	log.Println("Streaming results")
+	// 	dest := make([]driver.Value, 4)
+	// 	for {
+	// 		err = rows.Next(dest)
+	// 		if err != nil {
+	// 			break
+	// 		}
+	// 		log.Println(dest)
+	// 	}
+	// 	if err != nil && !errors.Is(err, ksql.ErrRowsClosed) {
+	// 		return err
+	// 	}
+	// 	return nil
+	// })
+
+	done := make(chan error)
+	go func() {
+		done <- g.Wait()
 	}()
 
-	fmt.Println("Streaming results")
-	dest := make([]driver.Value, 4)
-	for {
-		err = rows.Next(dest)
-		if err != nil {
-			break
-		}
-		fmt.Println(dest)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
 	}
-	if errors.Is(err, ksql.ErrRowsClosed) {
-		fmt.Println("Done")
-	} else {
-		fmt.Println(err)
-	}
-	return nil
 }
 
 func main() {
-	// json.NewEncoder(os.Stdout).Encode(ksql.QueryPayload{
-	// 	KSQL: "SET \\'auto.offset.reset\\' = \\'earliest\\';",
-	// })
-	// log.Println("")
-	// json.NewEncoder(os.Stdout).Encode(ksql.QueryPayload{
-	// 	KSQL: `SET \'auto.offset.reset\' = 'earliest';`,
-	// })
-	log.Println("")
+	log.Println("Starting... press ctrl-C to gracefully exit")
 	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	defer func() {
+		signal.Stop(c)
+		cancel()
+	}()
+	go func() {
+		select {
+		case <-c:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	if err := run(ctx); err != nil {
 		log.Fatal(err)
 	}

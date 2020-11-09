@@ -4,15 +4,19 @@ package ksql
 type QueryStrategy string
 
 const (
+	// StreamQuery uses the clients QueryStream method
 	StreamQuery QueryStrategy = "StreamQuery"
-	StaticQuery               = "StaticQuery"
+	// StaticQuery uses the clients more limited Query method
+	StaticQuery = "StaticQuery"
 )
 
+// QueryConfig is for use with database/sql based queries
 type QueryConfig struct {
 	Strategy          QueryStrategy
 	StreamsProperties StreamsProperties
 }
 
+// DefaultQueryConfig is the fallback config when querying through the database/sql interface
 var DefaultQueryConfig = NewQueryConfig()
 
 // NewQueryConfig constructs a new default QueryConfig builder

@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	// "golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,7 +58,7 @@ func (c Client) makeRequest(ctx context.Context, urlPath string, method string, 
 		return nil, err
 	}
 	switch urlPath {
-	case QueryStreamPath:
+	case QueryStreamPath, InsertsStreamPath:
 		req.Header.Add("Accept", AcceptDelimited)
 		req.Header.Add("Content-Type", AcceptDelimited)
 	default:
@@ -70,7 +72,7 @@ func (c Client) makeRequest(ctx context.Context, urlPath string, method string, 
 // QueryPayload represents the JSON payload for the POST /query endpoint
 type QueryPayload struct {
 	// KSQL is SELECT statement
-	KSQL string `json:"sql"`
+	KSQL string `json:"ksql"`
 	// StreamsProperties is a map of property overrides
 	StreamsProperties StreamsProperties `json:"streamsProperties,omitempty"`
 }
@@ -87,9 +89,64 @@ type QueryResult struct {
 	FinalMessage string `json:"finalMessage,omitempty"`
 }
 
-// Query runs a KSQL query and streams the response until the LIMIT is reached, or the
-// rows are closed
-func (c Client) Query(ctx context.Context, payload QueryPayload) (*Rows, error) {
+type QueryError struct {
+	result map[string]interface{}
+}
+
+func (q *QueryError) Error() string {
+	if msg, ok := q.result["message"]; ok {
+		return msg.(string)
+	}
+	return "an unknown error occurred"
+}
+
+type QueryRows struct {
+	res    []map[string]interface{}
+	i      int
+	closed bool
+	columns
+}
+
+func (q *QueryRows) Next(dest []driver.Value) error {
+	if q.closed {
+		return ErrRowsClosed
+	}
+	if q.i > len(q.res)-1 {
+		return io.EOF
+	}
+	row, exists := q.res[q.i]["row"]
+	if !exists {
+		return errors.New("unable to get row object")
+	}
+	rowMap, ok := row.(map[string]interface{})
+	if !ok {
+		return errors.New("row object has incorrect type")
+	}
+	cols, ok := rowMap["columns"]
+	if !ok {
+		return errors.New("unable to get columns from row object")
+	}
+	colsSlice, ok := cols.([]interface{})
+	if !ok {
+		return errors.New("unable to convert columns to slice")
+	}
+	if err := q.columns.Validate(dest); err != nil {
+		return err
+	}
+	for idx, v := range colsSlice {
+		dest[idx] = v.(driver.Value)
+	}
+	q.i++
+	return nil
+}
+
+func (q *QueryRows) Close() error {
+	q.closed = true
+	return nil
+}
+
+// Query runs a KSQL query and returns a cursor. For streaming results use the QueryStream method.
+func (c Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -103,30 +160,31 @@ func (c Client) Query(ctx context.Context, payload QueryPayload) (*Rows, error) 
 	if err != nil {
 		return nil, fmt.Errorf("unable to get response: %w", err)
 	}
-	dec := json.NewDecoder(resp.Body)
-	var resultsRaw []interface{}
-	if err := dec.Decode(&resultsRaw); err != nil {
+	defer resp.Body.Close()
+	by, err := ioutil.ReadAll(resp.Body)
+	var statementError map[string]interface{}
+	if err := json.Unmarshal(by, &statementError); err == nil {
+		return nil, &QueryError{statementError}
+	}
+	var resultsRaw []map[string]interface{}
+	if err := json.Unmarshal(by, &resultsRaw); err != nil {
 		return nil, err
 	}
-	var colNames []string
-	if headerMap, ok := resultsRaw[0].(map[string]map[string]string); ok {
-		fmt.Println(headerMap)
-		schema := headerMap["header"]["schema"]
-		colNames = parseSchemaKeys(schema)
+	cols := columns{
+		count: -1,
 	}
-	empt := &Emptier{resp.Body}
-	defer empt.Close()
-	buf := bytes.Buffer{}
-	if err = json.NewEncoder(&buf).Encode(resultsRaw[1:]); err != nil {
-		return nil, err
+	if h, ok := resultsRaw[0]["header"]; ok {
+		if headerMap, ok := h.(map[string]interface{}); ok {
+			if schema, exists := headerMap["schema"]; exists {
+				cols.names = parseSchemaKeys(schema.(string))
+				cols.count = len(cols.names)
+			}
+		}
 	}
-	r := &Rows{
-		ctx:      ctx,
-		dec:      json.NewDecoder(&buf),
-		colCount: len(colNames),
-		colNames: colNames,
-	}
-	return r, nil
+	return &QueryRows{
+		res:     resultsRaw[1:],
+		columns: cols,
+	}, nil
 }
 
 // ExecPayload represents the JSON payload for the /ksql endpoint
@@ -397,9 +455,11 @@ func (c Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*R
 			body:    resp.Body,
 			client:  c,
 		},
-		dec:      dec,
-		colCount: len(header.ColumnNames),
-		colNames: header.ColumnNames,
+		dec: dec,
+		columns: columns{
+			count: len(header.ColumnNames),
+			names: header.ColumnNames,
+		},
 	}
 	c.rows = append(c.rows, r)
 	return r, nil
@@ -438,22 +498,46 @@ type InsertsStreamAck struct {
 var ErrAckUnsucessful = errors.New("an ack was received but the status was not 'ok'")
 
 // InsertsStream llows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
-func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (io.WriteCloser, error) {
-	b := &bytes.Buffer{}
-	if err := json.NewEncoder(b).Encode(&payload); err != nil {
-		return nil, err
-	}
-	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, b)
+func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
+	pr, pw := io.Pipe()
+	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
+	rdr := &bytes.Buffer{}
 
-	w := newInsertStreamWriter(b, resp.Body)
-	c.insertsStreamWriters = append(c.insertsStreamWriters, w)
+	// g, ctx := errgroup.New()
+
+	go func() {
+		if err := json.NewEncoder(pw).Encode(&payload); err != nil {
+			log.Fatalln(err)
+		}
+	}()
+
+	go func() {
+		resp, err := c.http2.Do(req)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		res, err := io.Copy(rdr, resp.Body)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		log.Printf("Got: %#v", res)
+		var ack InsertsStreamAck
+		err = json.NewDecoder(resp.Body).Decode(&ack)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		log.Printf("Ack: %#v", ack)
+	}()
+	select {}
+
+	// if err := req.Write(conn); err != nil {
+	// 	return nil, err
+	// }
+	w := newInsertStreamWriter(ctx, pw, rdr)
+	// c.insertsStreamWriters = append(c.insertsStreamWriters, w)
 	return w, nil
 }
 
