@@ -9,59 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/vancelongwill/ksql"
 	_ "github.com/vancelongwill/ksql/stdlib"
-)
 
-var (
-	createTable = `
-CREATE TABLE t1 AS
-SELECT k,
-       LATEST_BY_OFFSET(v1) AS v1,
-       LATEST_BY_OFFSET(v2) AS v2,
-       LATEST_BY_OFFSET(v3) AS v3
-FROM s1
-GROUP BY k
-EMIT CHANGES;`
-	createStream = `
-CREATE STREAM s1 (
-    k VARCHAR KEY,
-    v1 INT,
-    v2 VARCHAR,
-    v3 BOOLEAN
-) WITH (
-    kafka_topic = 's1',
-    partitions = 1,
-    value_format = 'avro'
-);`
-	insertData = `
-INSERT INTO s1 (
-    k, v1, v2, v3
-) VALUES (
-    'k1', 0, 'a', true
-);
-
-INSERT INTO s1 (
-    k, v1, v2, v3
-) VALUES (
-    'k2', 1, 'b', false
-);
-
-INSERT INTO s1 (
-    k, v1, v2, v3
-) VALUES (
-    'k1', 2, 'c', false
-);
-
-INSERT INTO s1 (
-    k, v1, v2, v3
-) VALUES (
-    'k3', 3, 'd', true
-);
-
-INSERT INTO s1 (
-    k, v1, v2, v3
-) VALUES (
-    'k2', 4, 'e', true
-);`
+	"github.com/vancelongwill/ksql/_examples/seeder"
 )
 
 func run(ctx context.Context) error {
@@ -69,26 +18,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	log.Println("Setting offset to earliest")
-	_, err = db.ExecContext(ctx, "SET 'auto.offset.reset' = 'earliest';")
-	if err != nil {
-		return err
-	}
-	log.Println("Creating stream")
-	_, err = db.ExecContext(ctx, createStream)
-	if err != nil {
-		return err
-
-	}
-	log.Println("Inserting data")
-	_, err = db.ExecContext(ctx, insertData)
-	if err != nil {
-		return err
-	}
-	log.Println("Creating table based on stream")
-	_, err = db.ExecContext(ctx, createTable)
-	if err != nil {
+	if err := seeder.New(db.DB).Seed(ctx); err != nil {
 		return err
 	}
 	log.Println("Querying")
@@ -117,8 +47,7 @@ func run(ctx context.Context) error {
 	}
 
 	// check if we stopped looping because of the context expiring as expected
-	err = rows.Err()
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	if err := rows.Err(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 
