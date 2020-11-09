@@ -15,25 +15,11 @@ var (
 
 // Rows implements the standard libs Rows interface for reading DB rows
 type Rows struct {
-	closed   bool
-	ctx      context.Context
-	body     io.Closer
-	dec      *json.Decoder
-	colCount int
-	colNames []string
-}
-
-// Columns is a placeholder for returning the names of the columns.
-func (r *Rows) Columns() []string {
-	if len(r.colNames) > 0 {
-		return r.colNames
-	}
-	// if there's no column names provided, just return empty strings
-	cols := make([]string, r.colCount)
-	for i := range cols {
-		cols[i] = ""
-	}
-	return cols
+	closed bool
+	ctx    context.Context
+	body   io.Closer
+	dec    *json.Decoder
+	columns
 }
 
 func (r *Rows) next(dest []driver.Value) error {
@@ -43,10 +29,7 @@ func (r *Rows) next(dest []driver.Value) error {
 		}
 		return err
 	}
-	if len(dest) != r.colCount {
-		return ErrColumnNumberMismatch
-	}
-	return nil
+	return r.columns.Validate(dest)
 }
 
 // Next reads another Row from the stream
