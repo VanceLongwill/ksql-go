@@ -1,6 +1,7 @@
 package ksql
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -13,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 
 	"golang.org/x/net/http2"
@@ -496,21 +498,23 @@ type InsertsStreamAck struct {
 var ErrAckUnsucessful = errors.New("an ack was received but the status was not 'ok'")
 
 // InsertsStream llows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
-func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (io.WriteCloser, error) {
+func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, ioutil.NopCloser(b))
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	w := newInsertStreamWriter(b, resp.Body)
+	conn, _ := net.Dial("tcp", "0.0.0.0:8088")
+	// resp, err := c.client.Do(req)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	_ = req.Write(conn)
+	r := bufio.NewReader(conn)
+	w := newInsertStreamWriter(conn, resp.Body)
 	c.insertsStreamWriters = append(c.insertsStreamWriters, w)
 	return w, nil
 }

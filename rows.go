@@ -37,6 +37,7 @@ func (r *Rows) Next(dest []driver.Value) error {
 	errChan := make(chan error)
 	go func() {
 		errChan <- r.next(dest)
+		close(errChan)
 	}()
 	select {
 	case <-r.ctx.Done():

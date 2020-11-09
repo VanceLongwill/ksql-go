@@ -14,7 +14,7 @@ type InsertsStreamWriter struct {
 	req     io.Writer
 	resp    io.ReadCloser
 	acks    map[int64]string
-	dec     *json.Decoder
+	enc     *json.Encoder
 	err     error
 	curr    int64
 	timeout time.Duration
@@ -23,35 +23,27 @@ type InsertsStreamWriter struct {
 var newLineBytes = []byte("\n")
 
 // Write a JSON object representing the values to insert
-func (i *InsertsStreamWriter) Write(p []byte) (int, error) {
+func (i *InsertsStreamWriter) WriteJSON(p interface{}) error {
 	i.mu.Lock()
 	defer func() {
 		i.curr++ // increment the sequence number
 		i.mu.Unlock()
 	}()
 	if i.err != nil {
-		return 0, i.err
+		return i.err
 	}
-	n, err := i.req.Write(p)
-	if err != nil {
-		return 0, err
+	if err := i.enc.Encode(p); err != nil {
+		return err
 	}
-	nl, err := i.req.Write(newLineBytes)
-	if err != nil {
-		return n, err
-	}
-	n += nl
-
 	ctx, cancel := context.WithTimeout(context.Background(), i.timeout)
 	defer cancel()
 	if err := i.readAcksUntil(ctx); err != nil {
 		if err == context.DeadlineExceeded {
-			return 0, fmt.Errorf("timed out while waiting for ACK: %w", err)
+			return fmt.Errorf("timed out while waiting for ACK: %w", err)
 		}
-		return 0, err
+		return err
 	}
-
-	return n, nil
+	return nil
 }
 
 func (i *InsertsStreamWriter) readAcksUntil(ctx context.Context) error {
@@ -79,8 +71,11 @@ func (i *InsertsStreamWriter) readAcksUntil(ctx context.Context) error {
 
 func (i *InsertsStreamWriter) readAck() error {
 	var ack InsertsStreamAck
-	if err := i.dec.Decode(&ack); err != nil {
-		return err
+	if err := json.NewDecoder(i.resp).Decode(&ack); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return fmt.Errorf("unable to decode ack %w", err)
 	}
 	i.acks[ack.Seq] = ack.Status
 	return nil
@@ -98,8 +93,8 @@ func newInsertStreamWriter(req io.Writer, resp io.ReadCloser) *InsertsStreamWrit
 	i.mu = sync.Mutex{}
 	i.acks = map[int64]string{}
 	i.req = req
-	i.resp = Emptier{resp}
-	i.dec = json.NewDecoder(i.resp)
-	i.timeout = 5 * time.Second
+	i.resp = resp
+	i.enc = json.NewEncoder(i.req)
+	i.timeout = 10 * time.Second
 	return i
 }
