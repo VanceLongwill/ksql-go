@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/vancelongwill/ksql"
 	"golang.org/x/sync/errgroup"
@@ -115,7 +116,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		log.Println("Inserting via stream")
@@ -123,6 +124,7 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("unable to open insert stream: %w", err)
 		}
+		time.Sleep(2 * time.Second)
 		defer wtr.Close()
 		dataRows := []DataRow{
 			{K: "something", V1: 99, V2: "yes", V3: true},
@@ -130,6 +132,7 @@ func run(ctx context.Context) error {
 			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
 		}
 		for _, r := range dataRows {
+			log.Printf("Writing item %#v", r)
 			if err := wtr.WriteJSON(&r); err != nil {
 				return fmt.Errorf("unable to write item %#v to stream: %w", r, err)
 			}
@@ -162,11 +165,21 @@ func run(ctx context.Context) error {
 		return nil
 	})
 
-	return g.Wait()
+	done := make(chan error)
+	go func() {
+		done <- g.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
 }
 
 func main() {
-	log.Println("")
+	log.Println("Starting... press ctrl-C to gracefully exit")
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	c := make(chan os.Signal, 1)

@@ -1,7 +1,6 @@
 package ksql
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -11,11 +10,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
+	"time"
 
 	"golang.org/x/net/http2"
 )
@@ -58,7 +58,7 @@ func (c Client) makeRequest(ctx context.Context, urlPath string, method string, 
 		return nil, err
 	}
 	switch urlPath {
-	case QueryStreamPath:
+	case QueryStreamPath, InsertsStreamPath:
 		req.Header.Add("Accept", AcceptDelimited)
 		req.Header.Add("Content-Type", AcceptDelimited)
 	default:
@@ -499,6 +499,7 @@ var ErrAckUnsucessful = errors.New("an ack was received but the status was not '
 
 // InsertsStream llows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
 func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
+	out := &bytes.Buffer{}
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return nil, err
@@ -507,14 +508,41 @@ func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPa
 	if err != nil {
 		return nil, err
 	}
-	conn, _ := net.Dial("tcp", "0.0.0.0:8088")
-	// resp, err := c.client.Do(req)
-	// if err != nil {
+	req.ContentLength = -1
+	fmt.Println("MAKING REQ")
+	go func() {
+		resp, err := c.http2.Do(req)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		fmt.Printf("Got %#v \n", resp)
+		if resp.StatusCode > 220 {
+			by, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			log.Fatalln(string(by))
+		}
+
+		for {
+			buf := make([]byte, 1000)
+			_, err := resp.Body.Read(buf)
+			if err != nil {
+				if err == io.EOF {
+					continue
+				}
+				log.Fatalln(err)
+			}
+			log.Println("received : ", string(buf))
+			out.Write(buf)
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+
+	// if err := req.Write(conn); err != nil {
 	// 	return nil, err
 	// }
-	_ = req.Write(conn)
-	r := bufio.NewReader(conn)
-	w := newInsertStreamWriter(conn, resp.Body)
+	w := newInsertStreamWriter(ctx, b, out)
 	c.insertsStreamWriters = append(c.insertsStreamWriters, w)
 	return w, nil
 }

@@ -14,9 +14,10 @@ import (
 
 func TestInsertStreamWriter(t *testing.T) {
 	t.Run("Writes the json to the underlying writer", func(t *testing.T) {
+		ctx := context.Background()
 		b := &bytes.Buffer{}
 		r := ioutil.NopCloser(&bytes.Reader{})
-		wtr := newInsertStreamWriter(b, r)
+		wtr := newInsertStreamWriter(ctx, b, r)
 		defer wtr.Close()
 		in := map[string]string{"test": "ok"}
 		err := wtr.WriteJSON(&in)
@@ -28,9 +29,10 @@ func TestInsertStreamWriter(t *testing.T) {
 		assert.Equal(t, in, out)
 	})
 	t.Run("Fails when there is no corresponding ACK received before the timeout", func(t *testing.T) {
+		ctx := context.Background()
 		b := &bytes.Buffer{}
 		r := ioutil.NopCloser(&bytes.Reader{})
-		wtr := newInsertStreamWriter(b, r)
+		wtr := newInsertStreamWriter(ctx, b, r)
 		defer wtr.Close()
 		in := map[string]string{"test": "ok"}
 		err := wtr.WriteJSON(&in)
@@ -42,10 +44,11 @@ func TestInsertStreamWriter(t *testing.T) {
 		assert.Equal(t, in, out)
 	})
 	t.Run("Reads an ack", func(t *testing.T) {
+		ctx := context.Background()
 		b := &bytes.Buffer{}
 		w := &bytes.Buffer{}
 		r := ioutil.NopCloser(w)
-		wtr := newInsertStreamWriter(b, r)
+		wtr := newInsertStreamWriter(ctx, b, r)
 		defer wtr.Close()
 		ack1 := InsertsStreamAck{Status: "ok", Seq: 0}
 		if err := json.NewEncoder(w).Encode(&ack1); err != nil {
@@ -56,10 +59,11 @@ func TestInsertStreamWriter(t *testing.T) {
 		assert.Equal(t, ack1.Status, wtr.acks[0])
 	})
 	t.Run("Reads an ack async", func(t *testing.T) {
+		ctx := context.Background()
 		b := &bytes.Buffer{}
 		w := &bytes.Buffer{}
 		r := ioutil.NopCloser(w)
-		wtr := newInsertStreamWriter(b, r)
+		wtr := newInsertStreamWriter(ctx, b, r)
 		defer wtr.Close()
 		ack1 := InsertsStreamAck{Status: "ok", Seq: 0}
 		err := wtr.readAck()
@@ -74,10 +78,11 @@ func TestInsertStreamWriter(t *testing.T) {
 		assert.Equal(t, ack1.Status, got)
 	})
 	t.Run("Succeedes when the corresponding ACK is received", func(t *testing.T) {
+		ctx := context.Background()
 		b := &bytes.Buffer{}
 		w := &bytes.Buffer{}
 		r := ioutil.NopCloser(w)
-		wtr := newInsertStreamWriter(b, r)
+		wtr := newInsertStreamWriter(ctx, b, r)
 		// send the corresponding ack 1 second later
 		go func() {
 			time.Sleep(1 * time.Second)
@@ -96,6 +101,7 @@ func TestInsertStreamWriter(t *testing.T) {
 		assert.Equal(t, in, out)
 	})
 	t.Run("Fails by timeing out when an ack is received but is not the correct sequence", func(t *testing.T) {
+		ctx := context.Background()
 		b := &bytes.Buffer{}
 		w := &bytes.Buffer{}
 		r := ioutil.NopCloser(w)
@@ -107,7 +113,7 @@ func TestInsertStreamWriter(t *testing.T) {
 				t.Fatalf("unexpected error sending JSON ack in test: %v", err)
 			}
 		}()
-		wtr := newInsertStreamWriter(b, r)
+		wtr := newInsertStreamWriter(ctx, b, r)
 		defer wtr.Close()
 		in := map[string]string{"test": "ok"}
 		err := wtr.WriteJSON(&in)
