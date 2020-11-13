@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
-	"database/sql/driver"
-	"errors"
+	"math/rand"
+	"strconv"
+	// "database/sql/driver"
+	// "errors"
 	"fmt"
 	"log"
 	"os"
@@ -118,6 +120,8 @@ func run(ctx context.Context) error {
 
 	g, _ := errgroup.WithContext(ctx)
 
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
 	g.Go(func() error {
 		log.Println("Inserting via stream")
 		wtr, err := db.InsertsStream(ctx, ksql.InsertsStreamTargetPayload{Target: "s1"})
@@ -127,9 +131,9 @@ func run(ctx context.Context) error {
 		time.Sleep(2 * time.Second)
 		defer wtr.Close()
 		dataRows := []DataRow{
-			{K: "something", V1: 99, V2: "yes", V3: true},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+			{K: strconv.Itoa(r1.Int()), V1: 99, V2: "yes", V3: true},
+			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
+			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
 		}
 		for _, r := range dataRows {
 			log.Printf("Writing item %#v", r)
@@ -140,30 +144,30 @@ func run(ctx context.Context) error {
 		return nil
 	})
 
-	g.Go(func() error {
-		log.Println("Querying table")
-		rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
-			KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
-		})
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
+	// g.Go(func() error {
+	// 	log.Println("Querying table")
+	// 	rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
+	// 		KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
+	// 	})
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	defer rows.Close()
 
-		log.Println("Streaming results")
-		dest := make([]driver.Value, 4)
-		for {
-			err = rows.Next(dest)
-			if err != nil {
-				break
-			}
-			log.Println(dest)
-		}
-		if err != nil && !errors.Is(err, ksql.ErrRowsClosed) {
-			return err
-		}
-		return nil
-	})
+	// 	log.Println("Streaming results")
+	// 	dest := make([]driver.Value, 4)
+	// 	for {
+	// 		err = rows.Next(dest)
+	// 		if err != nil {
+	// 			break
+	// 		}
+	// 		log.Println(dest)
+	// 	}
+	// 	if err != nil && !errors.Is(err, ksql.ErrRowsClosed) {
+	// 		return err
+	// 	}
+	// 	return nil
+	// })
 
 	done := make(chan error)
 	go func() {

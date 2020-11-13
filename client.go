@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	// "golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
 	"log"
@@ -15,7 +16,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"time"
 
 	"golang.org/x/net/http2"
 )
@@ -499,51 +499,45 @@ var ErrAckUnsucessful = errors.New("an ack was received but the status was not '
 
 // InsertsStream llows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
 func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
-	out := &bytes.Buffer{}
-	b := &bytes.Buffer{}
-	if err := json.NewEncoder(b).Encode(&payload); err != nil {
-		return nil, err
-	}
-	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, ioutil.NopCloser(b))
+	pr, pw := io.Pipe()
+	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
 	if err != nil {
 		return nil, err
 	}
-	req.ContentLength = -1
-	fmt.Println("MAKING REQ")
+	rdr := &bytes.Buffer{}
+
+	// g, ctx := errgroup.New()
+
+	go func() {
+		if err := json.NewEncoder(pw).Encode(&payload); err != nil {
+			log.Fatalln(err)
+		}
+	}()
+
 	go func() {
 		resp, err := c.http2.Do(req)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		fmt.Printf("Got %#v \n", resp)
-		if resp.StatusCode > 220 {
-			by, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			log.Fatalln(string(by))
+		res, err := io.Copy(rdr, resp.Body)
+		if err != nil {
+			log.Fatalln(err)
 		}
-
-		for {
-			buf := make([]byte, 1000)
-			_, err := resp.Body.Read(buf)
-			if err != nil {
-				if err == io.EOF {
-					continue
-				}
-				log.Fatalln(err)
-			}
-			log.Println("received : ", string(buf))
-			out.Write(buf)
-			time.Sleep(100 * time.Millisecond)
+		log.Printf("Got: %#v", res)
+		var ack InsertsStreamAck
+		err = json.NewDecoder(resp.Body).Decode(&ack)
+		if err != nil {
+			log.Fatalln(err)
 		}
+		log.Printf("Ack: %#v", ack)
 	}()
+	select {}
 
 	// if err := req.Write(conn); err != nil {
 	// 	return nil, err
 	// }
-	w := newInsertStreamWriter(ctx, b, out)
-	c.insertsStreamWriters = append(c.insertsStreamWriters, w)
+	w := newInsertStreamWriter(ctx, pw, rdr)
+	// c.insertsStreamWriters = append(c.insertsStreamWriters, w)
 	return w, nil
 }
 
