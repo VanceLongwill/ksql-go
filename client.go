@@ -1,6 +1,7 @@
 package ksql
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -8,16 +9,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	// "golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"path"
 
 	"golang.org/x/net/http2"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -504,41 +506,56 @@ func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPa
 	if err != nil {
 		return nil, err
 	}
-	rdr := &bytes.Buffer{}
-
-	// g, ctx := errgroup.New()
-
+	ackCh := make(chan InsertsStreamAck)
+	ackMap := make(map[int64]string)
+	errCh := make(chan error, 1)
+	resCh := make(chan *http.Response, 1)
+	enc := json.NewEncoder(pw)
+	g, _ := errgroup.WithContext(context.Background())
+	g.Go(func() error {
+		return enc.Encode(&payload)
+	})
+	g.Go(func() error {
+		t := &http2.Transport{
+			AllowHTTP: true,
+			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
+				return net.Dial(network, addr)
+			},
+		}
+		c := http.Client{Transport: t}
+		res, err := c.Do(req)
+		if err != nil {
+			return err
+		}
+		resCh <- res
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	res := <-resCh
 	go func() {
-		if err := json.NewEncoder(pw).Encode(&payload); err != nil {
-			log.Fatalln(err)
+		defer close(ackCh)
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			var ack InsertsStreamAck
+			b := sc.Bytes()
+			if err := json.Unmarshal(b, &ack); err != nil {
+				errCh <- err
+			}
+			ackCh <- ack
+		}
+		if err := sc.Err(); err != nil {
+			errCh <- err
 		}
 	}()
-
-	go func() {
-		resp, err := c.http2.Do(req)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		res, err := io.Copy(rdr, resp.Body)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		log.Printf("Got: %#v", res)
-		var ack InsertsStreamAck
-		err = json.NewDecoder(resp.Body).Decode(&ack)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		log.Printf("Ack: %#v", ack)
-	}()
-	select {}
-
-	// if err := req.Write(conn); err != nil {
-	// 	return nil, err
-	// }
-	w := newInsertStreamWriter(ctx, pw, rdr)
-	// c.insertsStreamWriters = append(c.insertsStreamWriters, w)
-	return w, nil
+	return &InsertsStreamWriter{
+		enc:    enc,
+		ackMap: ackMap,
+		curr:   0,
+		ackCh:  ackCh,
+		errCh:  errCh,
+	}, nil
 }
 
 type TerminateClusterPayload struct {
@@ -625,9 +642,9 @@ func (c Client) Close() error {
 		if wtr == nil {
 			continue
 		}
-		if err := wtr.Close(); err != nil {
-			return err
-		}
+		// if err := wtr.Close(); err != nil {
+		// 	return err
+		// }
 	}
 	return nil
 }
