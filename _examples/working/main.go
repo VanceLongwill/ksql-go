@@ -36,6 +36,7 @@ type Inserter struct {
 }
 
 func (i *Inserter) WriteJSON(ctx context.Context, p interface{}) error {
+	curr := i.curr
 	defer func() {
 		i.curr++
 	}()
@@ -43,8 +44,8 @@ func (i *Inserter) WriteJSON(ctx context.Context, p interface{}) error {
 	if err != nil {
 		return err
 	}
-	if a, ok := i.ackMap[i.curr]; ok {
-		log.Printf("FOUND ACK %d %s", i.curr, a)
+	if a, ok := i.ackMap[curr]; ok {
+		log.Printf("FOUND ACK %d %s", curr, a)
 		if a != "ok" {
 			return errors.New("Unsuccessful ack received")
 		}
@@ -53,8 +54,8 @@ func (i *Inserter) WriteJSON(ctx context.Context, p interface{}) error {
 	for ack := range i.ackCh {
 		log.Printf("got ack %#v", ack)
 		i.ackMap[ack.Seq] = ack.Status
-		if a, ok := i.ackMap[i.curr]; ok {
-			log.Printf("FOUND ACK %d %s", i.curr, a)
+		if a, ok := i.ackMap[curr]; ok {
+			log.Printf("FOUND ACK %d %s", curr, a)
 			if a != "ok" {
 				return errors.New("Unsuccessful ack received")
 			}
@@ -78,30 +79,30 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		dataRows := []DataRow{
-			{K: "something", V1: 99, V2: "yes", V3: true},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-		}
-		for i, row := range dataRows {
-			time.Sleep(1 * time.Second)
-			err := json.NewEncoder(pw).Encode(&row)
-			if err != nil {
-				log.Fatal(err)
-			}
-			if a, ok := ackMap[int64(i)]; ok {
-				log.Printf("FOUND ACK %d %s", i, a)
-				continue
-			}
-			for ack := range ackCh {
-				log.Printf("got ack %#v", ack)
-				ackMap[ack.Seq] = ack.Status
-				if a, ok := ackMap[int64(i)]; ok {
-					log.Printf("FOUND ACK %d %s", i, a)
-					break
-				}
-			}
-		}
+		// dataRows := []DataRow{
+		// 	{K: "something", V1: 99, V2: "yes", V3: true},
+		// 	{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+		// 	{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+		// }
+		// for i, row := range dataRows {
+		// 	time.Sleep(1 * time.Second)
+		// 	err := json.NewEncoder(pw).Encode(&row)
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// 	if a, ok := ackMap[int64(i)]; ok {
+		// 		log.Printf("FOUND ACK %d %s", i, a)
+		// 		continue
+		// 	}
+		// 	for ack := range ackCh {
+		// 		log.Printf("got ack %#v", ack)
+		// 		ackMap[ack.Seq] = ack.Status
+		// 		if a, ok := ackMap[int64(i)]; ok {
+		// 			log.Printf("FOUND ACK %d %s", i, a)
+		// 			break
+		// 		}
+		// 	}
+		// }
 	}()
 	go func() {
 		defer close(ackCh)
@@ -130,6 +131,28 @@ func main() {
 		if err := sc.Err(); err != nil {
 			log.Fatalln(err)
 		}
+	}()
+
+	go func() {
+		wtr := &Inserter{
+			enc:    enc,
+			ackMap: ackMap,
+			curr:   0,
+			ackCh:  ackCh,
+		}
+		dataRows := []DataRow{
+			{K: "something", V1: 99, V2: "yes", V3: true},
+			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+		}
+		for _, row := range dataRows {
+			time.Sleep(1 * time.Second)
+			err := wtr.WriteJSON(context.Background(), &row)
+			if err != nil {
+				log.Fatalln("Unable to write JSON")
+			}
+		}
+
 	}()
 	select {}
 }
