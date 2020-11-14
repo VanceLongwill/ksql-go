@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
-	"math/rand"
-	"strconv"
-	// "database/sql/driver"
-	// "errors"
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/vancelongwill/ksql"
@@ -129,45 +129,45 @@ func run(ctx context.Context) error {
 			return fmt.Errorf("unable to open insert stream: %w", err)
 		}
 		time.Sleep(2 * time.Second)
-		defer wtr.Close()
 		dataRows := []DataRow{
 			{K: strconv.Itoa(r1.Int()), V1: 99, V2: "yes", V3: true},
 			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
 			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
 		}
 		for _, r := range dataRows {
+			time.Sleep(1 * time.Second)
 			log.Printf("Writing item %#v", r)
-			if err := wtr.WriteJSON(&r); err != nil {
+			if err := wtr.WriteJSON(context.Background(), &r); err != nil {
 				return fmt.Errorf("unable to write item %#v to stream: %w", r, err)
 			}
 		}
 		return nil
 	})
 
-	// g.Go(func() error {
-	// 	log.Println("Querying table")
-	// 	rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
-	// 		KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
-	// 	})
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	defer rows.Close()
+	g.Go(func() error {
+		log.Println("Querying table")
+		rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
+			KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
+		})
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
 
-	// 	log.Println("Streaming results")
-	// 	dest := make([]driver.Value, 4)
-	// 	for {
-	// 		err = rows.Next(dest)
-	// 		if err != nil {
-	// 			break
-	// 		}
-	// 		log.Println(dest)
-	// 	}
-	// 	if err != nil && !errors.Is(err, ksql.ErrRowsClosed) {
-	// 		return err
-	// 	}
-	// 	return nil
-	// })
+		log.Println("Streaming results")
+		dest := make([]driver.Value, 4)
+		for {
+			err = rows.Next(dest)
+			if err != nil {
+				break
+			}
+			log.Println(dest)
+		}
+		if err != nil && !errors.Is(err, ksql.ErrRowsClosed) {
+			return err
+		}
+		return nil
+	})
 
 	done := make(chan error)
 	go func() {
