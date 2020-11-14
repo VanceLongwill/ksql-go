@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
-	"golang.org/x/net/http2"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"time"
+
+	"golang.org/x/net/http2"
+	"golang.org/x/sync/errgroup"
 )
 
 type DataRow struct {
@@ -21,103 +25,84 @@ type DataRow struct {
 }
 
 type InsertsStreamWriter struct {
+	targetStream string
+	req          io.Writer
+	resp         io.Reader
 }
 
-func (i *InsertsStreamWriter) Init() {
+func (i *InsertsStreamWriter) ReadAck() error {
+	sc := bufio.NewScanner(i.resp)
+	for sc.Scan() {
+		fmt.Println(sc.Bytes())
+	}
+	return sc.Err()
+}
 
-	go func() {
-		err := json.NewEncoder(pw).Encode(map[string]string{"target": "s1"})
-		if err != nil {
-			errCh <- err
+func (i *InsertsStreamWriter) WriteJSON(ctx context.Context, p interface{}) error {
+	return json.NewEncoder(i.req).Encode(p)
+}
+
+func (i *InsertsStreamWriter) Init() error {
+	respRw := &bytes.Buffer{}
+	pr, pw := io.Pipe()
+	i.req = pw
+	req, err := http.NewRequest("POST", "http://0.0.0.0:8088/inserts-stream", ioutil.NopCloser(pr))
+	if err != nil {
+		return err
+	}
+	g, _ := errgroup.WithContext(context.Background())
+	g.Go(func() error {
+		return json.NewEncoder(pw).Encode(map[string]string{"target": i.targetStream})
+	})
+	g.Go(func() error {
+		t := &http2.Transport{
+			AllowHTTP: true,
+			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
+				return net.Dial(network, addr)
+			},
 		}
+		c := http.Client{Transport: t}
+		res, err := c.Do(req)
+		if err != nil {
+			return err
+		}
+		log.Printf("Got: %#v", res)
+		n, err := io.Copy(respRw, res.Body)
+		log.Fatalf("copied %d, %v", n, err)
+		return nil
+	})
+	i.resp = respRw
+	return g.Wait()
 }
 
 func NewInsertsStreamWriter() *InsertsStreamWriter {
-	pr, pw := io.Pipe()
-	req, err := http.NewRequest("POST", "http://0.0.0.0:8088/inserts-stream", ioutil.NopCloser(pr))
-	if err != nil {
-		log.Fatal(err)
-	}
-	go func() {
-		err := json.NewEncoder(pw).Encode(map[string]string{"target": "s1"})
-		if err != nil {
-			errCh <- err
-		}
-
-		dataRows := []DataRow{
-			{K: "something", V1: 99, V2: "yes", V3: true},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-		}
-		for _, row := range dataRows {
-			time.Sleep(1 * time.Second)
-			err := json.NewEncoder(pw).Encode(&row)
-			if err != nil {
-				log.Fatal(err)
-			}
-			// fmt.Fprintf(pw, "It is now %v\n", time.Now())
-		}
-	}()
-	go func() {
-		t := &http2.Transport{
-			AllowHTTP: true,
-			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
-				return net.Dial(network, addr)
-			},
-		}
-		c := http.Client{Transport: t}
-		res, err := c.Do(req)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Got: %#v", res)
-		n, err := io.Copy(os.Stdout, res.Body)
-		log.Fatalf("copied %d, %v", n, err)
-	}()
-
+	i := &InsertsStreamWriter{targetStream: "s1"}
+	return i
 }
 
 func main() {
-	pr, pw := io.Pipe()
-	req, err := http.NewRequest("POST", "http://0.0.0.0:8088/inserts-stream", ioutil.NopCloser(pr))
-	if err != nil {
-		log.Fatal(err)
-	}
-	go func() {
-		err := json.NewEncoder(pw).Encode(map[string]string{"target": "s1"})
-		if err != nil {
-			log.Fatal(err)
-		}
+	wtr := NewInsertsStreamWriter()
+	done := make(chan struct{})
 
-		dataRows := []DataRow{
-			{K: "something", V1: 99, V2: "yes", V3: true},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-		}
-		for _, row := range dataRows {
-			time.Sleep(1 * time.Second)
-			err := json.NewEncoder(pw).Encode(&row)
-			if err != nil {
-				log.Fatal(err)
-			}
-			// fmt.Fprintf(pw, "It is now %v\n", time.Now())
-		}
-	}()
 	go func() {
-		t := &http2.Transport{
-			AllowHTTP: true,
-			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
-				return net.Dial(network, addr)
-			},
+		if err := wtr.Init(); err != nil {
+			log.Fatalln(err)
 		}
-		c := http.Client{Transport: t}
-		res, err := c.Do(req)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("Got: %#v", res)
-		n, err := io.Copy(os.Stdout, res.Body)
-		log.Fatalf("copied %d, %v", n, err)
+		done <- struct{}{}
 	}()
-	select {}
+	dataRows := []DataRow{
+		{K: "something", V1: 99, V2: "yes", V3: true},
+		{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+		{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+	}
+	for _, row := range dataRows {
+		fmt.Printf("Doing row %#v \n", row)
+		if err := wtr.WriteJSON(context.Background(), &row); err != nil {
+			log.Fatalln(err)
+		}
+		if err := wtr.ReadAck(); err != nil {
+			log.Fatalln(err)
+		}
+	}
+	<-done
 }
