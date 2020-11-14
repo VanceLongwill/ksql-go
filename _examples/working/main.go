@@ -33,6 +33,7 @@ type Inserter struct {
 	ackMap map[int64]string
 	curr   int64
 	ackCh  <-chan InsertsStreamAck
+	errCh  <-chan error
 }
 
 func (i *Inserter) WriteJSON(ctx context.Context, p interface{}) error {
@@ -65,47 +66,23 @@ func (i *Inserter) WriteJSON(ctx context.Context, p interface{}) error {
 	return errors.New("Ack channel was closed before ack found")
 }
 
-func main() {
+func InsertsStream() (*Inserter, error) {
 	pr, pw := io.Pipe()
 	req, err := http.NewRequest("POST", "http://0.0.0.0:8088/inserts-stream", ioutil.NopCloser(pr))
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	ackCh := make(chan InsertsStreamAck)
 	ackMap := map[int64]string{}
 	enc := json.NewEncoder(pw)
+	// errCh := make(chan error)
 	go func() {
 		err := enc.Encode(map[string]string{"target": "s1"})
 		if err != nil {
 			log.Fatal(err)
 		}
-		// dataRows := []DataRow{
-		// 	{K: "something", V1: 99, V2: "yes", V3: true},
-		// 	{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-		// 	{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-		// }
-		// for i, row := range dataRows {
-		// 	time.Sleep(1 * time.Second)
-		// 	err := json.NewEncoder(pw).Encode(&row)
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// 	if a, ok := ackMap[int64(i)]; ok {
-		// 		log.Printf("FOUND ACK %d %s", i, a)
-		// 		continue
-		// 	}
-		// 	for ack := range ackCh {
-		// 		log.Printf("got ack %#v", ack)
-		// 		ackMap[ack.Seq] = ack.Status
-		// 		if a, ok := ackMap[int64(i)]; ok {
-		// 			log.Printf("FOUND ACK %d %s", i, a)
-		// 			break
-		// 		}
-		// 	}
-		// }
 	}()
 	go func() {
-		defer close(ackCh)
 		t := &http2.Transport{
 			AllowHTTP: true,
 			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
@@ -118,6 +95,7 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Printf("Got: %#v", res)
+		defer close(ackCh)
 		sc := bufio.NewScanner(res.Body)
 		for sc.Scan() {
 			var ack InsertsStreamAck
@@ -133,26 +111,30 @@ func main() {
 		}
 	}()
 
-	go func() {
-		wtr := &Inserter{
-			enc:    enc,
-			ackMap: ackMap,
-			curr:   0,
-			ackCh:  ackCh,
-		}
-		dataRows := []DataRow{
-			{K: "something", V1: 99, V2: "yes", V3: true},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-			{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
-		}
-		for _, row := range dataRows {
-			time.Sleep(1 * time.Second)
-			err := wtr.WriteJSON(context.Background(), &row)
-			if err != nil {
-				log.Fatalln("Unable to write JSON")
-			}
-		}
+	return &Inserter{
+		enc:    enc,
+		ackMap: ackMap,
+		curr:   0,
+		ackCh:  ackCh,
+	}, nil
 
-	}()
-	select {}
+}
+
+func main() {
+	wtr, err := InsertsStream()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	dataRows := []DataRow{
+		{K: "something", V1: 99, V2: "yes", V3: true},
+		{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+		{K: "somethingelse", V1: 19292, V2: "asdasd", V3: false},
+	}
+	for _, row := range dataRows {
+		time.Sleep(1 * time.Second)
+		err := wtr.WriteJSON(context.Background(), &row)
+		if err != nil {
+			log.Fatalln("Unable to write JSON")
+		}
+	}
 }
