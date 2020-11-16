@@ -9,8 +9,10 @@ import (
 )
 
 var (
+	// ErrColumnNumberMismatch is returned when the number of columns present doesn't match the destination slice length
 	ErrColumnNumberMismatch = errors.New("unexpected number of columns")
-	ErrRowsClosed           = errors.New("rows closed")
+	// ErrRowsClosed is returned when trying to interate over rows after the iterator has been closed
+	ErrRowsClosed = errors.New("rows closed")
 )
 
 // Rows implements the standard libs Rows interface for reading DB rows

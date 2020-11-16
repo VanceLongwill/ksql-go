@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 
-	// "golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
 	"net"
@@ -30,14 +29,16 @@ var (
 )
 
 var (
-	QueryPath            = "/query"
-	ExecPath             = "/ksql"
-	QueryStreamPath      = "/query-stream"
-	CloseQueryPath       = "/close-query"
-	InsertsStreamPath    = "/inserts-stream"
-	TerminateClusterPath = "/ksql/terminate"
-	InfoPath             = "/info"
-	HealthCheckPath      = "/healthcheck"
+	// ksqlDB endpoints
+
+	queryPath            = "/query"
+	execPath             = "/ksql"
+	queryStreamPath      = "/query-stream"
+	closeQueryPath       = "/close-query"
+	insertsStreamPath    = "/inserts-stream"
+	terminateClusterPath = "/ksql/terminate"
+	infoPath             = "/info"
+	healthCheckPath      = "/healthcheck"
 )
 
 // Client is a ksqlDB client
@@ -60,7 +61,7 @@ func (c Client) makeRequest(ctx context.Context, urlPath string, method string, 
 		return nil, err
 	}
 	switch urlPath {
-	case QueryStreamPath, InsertsStreamPath:
+	case queryStreamPath, insertsStreamPath:
 		req.Header.Add("Accept", AcceptDelimited)
 		req.Header.Add("Content-Type", AcceptDelimited)
 	default:
@@ -91,6 +92,7 @@ type QueryResult struct {
 	FinalMessage string `json:"finalMessage,omitempty"`
 }
 
+// QueryError represents an error querying
 type QueryError struct {
 	result map[string]interface{}
 }
@@ -102,6 +104,7 @@ func (q *QueryError) Error() string {
 	return "an unknown error occurred"
 }
 
+// QueryRows is a row iterator for static queries
 type QueryRows struct {
 	res    []map[string]interface{}
 	i      int
@@ -109,6 +112,7 @@ type QueryRows struct {
 	columns
 }
 
+// Next implements the sql driver row interface used for interating over rows
 func (q *QueryRows) Next(dest []driver.Value) error {
 	if q.closed {
 		return ErrRowsClosed
@@ -142,6 +146,7 @@ func (q *QueryRows) Next(dest []driver.Value) error {
 	return nil
 }
 
+// Close closes the rows interator
 func (q *QueryRows) Close() error {
 	q.closed = true
 	return nil
@@ -154,7 +159,7 @@ func (c Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, er
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, QueryPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, queryPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +377,7 @@ func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, er
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, ExecPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, execPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +442,7 @@ func (c Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*R
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, QueryStreamPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, queryStreamPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +483,7 @@ func (c Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) error
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err
 	}
-	req, err := c.makeRequest(ctx, CloseQueryPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, closeQueryPath, http.MethodPost, b)
 	if err != nil {
 		return err
 	}
@@ -488,52 +493,59 @@ func (c Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) error
 	return nil
 }
 
+// InsertsStreamTargetPayload represents the request body for initiating an inserts stream
 type InsertsStreamTargetPayload struct {
 	Target string `json:"target"`
 }
 
+// InsertsStreamAck represents an insert acknowledgement message in an inserts stream
 type InsertsStreamAck struct {
 	Status string `json:"status"`
 	Seq    int64  `json:"seq"`
 }
 
-var ErrAckUnsucessful = errors.New("an ack was received but the status was not 'ok'")
+// InsertsStreamCloser gracefully terminates the stream
+type InsertsStreamCloser struct {
+	req  io.ReadCloser
+	resp io.ReadCloser
+}
 
-// InsertsStream llows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
+// Close closes the request body thus terminating the stream
+func (i *InsertsStreamCloser) Close() error {
+	if err := i.req.Close(); err != nil {
+		return err
+	}
+	if _, err := io.Copy(ioutil.Discard, i.resp); err != nil {
+		return err
+	}
+	if err := i.resp.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// InsertsStream allows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
 func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
 	pr, pw := io.Pipe()
-	req, err := c.makeRequest(ctx, InsertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
+	req, err := c.makeRequest(ctx, insertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
 	if err != nil {
 		return nil, err
 	}
 	ackCh := make(chan InsertsStreamAck)
 	ackMap := make(map[int64]string)
 	errCh := make(chan error, 1)
-	resCh := make(chan *http.Response, 1)
 	enc := json.NewEncoder(pw)
 	g, _ := errgroup.WithContext(context.Background())
 	g.Go(func() error {
 		return enc.Encode(&payload)
 	})
-	g.Go(func() error {
-		t := &http2.Transport{
-			AllowHTTP: true,
-			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
-				return net.Dial(network, addr)
-			},
-		}
-		c := http.Client{Transport: t}
-		res, err := c.Do(req)
-		if err != nil {
-			return err
-		}
-		resCh <- res
-		return nil
-	})
+	res, err := c.http2.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	res := <-resCh
 	go func() {
 		defer close(ackCh)
 		sc := bufio.NewScanner(res.Body)
@@ -542,33 +554,40 @@ func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPa
 			b := sc.Bytes()
 			if err := json.Unmarshal(b, &ack); err != nil {
 				errCh <- err
+				close(errCh)
 			}
 			ackCh <- ack
 		}
 		if err := sc.Err(); err != nil {
 			errCh <- err
+			close(errCh)
 		}
 	}()
-	return &InsertsStreamWriter{
+	i := &InsertsStreamWriter{
 		enc:    enc,
 		ackMap: ackMap,
 		curr:   0,
 		ackCh:  ackCh,
 		errCh:  errCh,
-	}, nil
+		closer: &InsertsStreamCloser{req: pr, resp: res.Body},
+	}
+	c.insertsStreamWriters = append(c.insertsStreamWriters, i)
+	return i, nil
 }
 
+// TerminateClusterPayload represents the request body payload to terminate a ksqlDB cluster
 type TerminateClusterPayload struct {
 	// DeleteTopicList is an optional list of Kafka topics to delete
 	DeleteTopicList []string `json:"deleteTopicList,omitempty"`
 }
 
+// TerminateCluster terminates a running ksqlDB cluster
 func (c Client) TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error {
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err
 	}
-	req, err := c.makeRequest(ctx, TerminateClusterPath, http.MethodPost, b)
+	req, err := c.makeRequest(ctx, terminateClusterPath, http.MethodPost, b)
 	if err != nil {
 		return err
 	}
@@ -580,11 +599,13 @@ func (c Client) TerminateCluster(ctx context.Context, payload TerminateClusterPa
 	return nil
 }
 
+// InfoResult is a map of status information
 type InfoResult map[string]interface{}
 
+// Info returns status information about the ksqlDB cluster
 func (c Client) Info(ctx context.Context) (InfoResult, error) {
 	result := InfoResult{}
-	req, err := c.makeRequest(ctx, InfoPath, http.MethodGet, nil)
+	req, err := c.makeRequest(ctx, infoPath, http.MethodGet, nil)
 	if err != nil {
 		return result, err
 	}
@@ -599,7 +620,8 @@ func (c Client) Info(ctx context.Context) (InfoResult, error) {
 	return result, nil
 }
 
-type HealthCheckResult struct {
+// HealthcheckResult represents the health check information returned by the health check endpoint
+type HealthcheckResult struct {
 	IsHealthy bool `json:"isHealthy"`
 	Details   struct {
 		Metastore struct {
@@ -611,9 +633,10 @@ type HealthCheckResult struct {
 	} `json:"details"`
 }
 
-func (c Client) Healthcheck(ctx context.Context) (HealthCheckResult, error) {
-	result := HealthCheckResult{}
-	req, err := c.makeRequest(ctx, InfoPath, http.MethodGet, nil)
+// Healthcheck gets basic health information from the ksqlDB cluster
+func (c Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
+	result := HealthcheckResult{}
+	req, err := c.makeRequest(ctx, infoPath, http.MethodGet, nil)
 	if err != nil {
 		return result, err
 	}
@@ -642,9 +665,9 @@ func (c Client) Close() error {
 		if wtr == nil {
 			continue
 		}
-		// if err := wtr.Close(); err != nil {
-		// 	return err
-		// }
+		if err := wtr.Close(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

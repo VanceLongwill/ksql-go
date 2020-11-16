@@ -128,6 +128,7 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("unable to open insert stream: %w", err)
 		}
+		defer wtr.Close()
 		time.Sleep(2 * time.Second)
 		dataRows := []DataRow{
 			{K: strconv.Itoa(r1.Int()), V1: 99, V2: "yes", V3: true},
@@ -161,7 +162,7 @@ func run(ctx context.Context) error {
 			if err != nil {
 				break
 			}
-			log.Println(dest)
+			log.Printf("Received: %v", dest)
 		}
 		if err != nil && !errors.Is(err, ksql.ErrRowsClosed) {
 			return err

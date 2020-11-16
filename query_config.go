@@ -39,7 +39,7 @@ func (q *QueryConfig) Static() *QueryConfig {
 	return q
 }
 
-// Properties sets the stream properties for the query, replacing any existing properties
+// SetProperties sets the stream properties for the query, replacing any existing properties
 func (q *QueryConfig) SetProperties(props StreamsProperties) *QueryConfig {
 	q.StreamsProperties = props
 	return q

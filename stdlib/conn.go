@@ -10,58 +10,74 @@ import (
 )
 
 var (
+	// ErrTransactionsNotSupported is a placeholder returned by sql driver transaction related methods, given that no such functionality exists currently in ksqlDB
 	ErrTransactionsNotSupported = errors.New("Transactions are not supported by the kafka-go driver, please use Query or Exec instead")
+
+	// ErrInvalidQueryStrategy is returned when the provided query strategy is not supported or doesn't exist
+	ErrInvalidQueryStrategy = errors.New("unrecognised query strategy")
 )
 
+// Conn provides the driver.Conn interface for interacting with the ksqlDB client
 type Conn struct {
 	client             *ksql.Client
 	preparedStatements map[string]PreparedStatement
 	stmtNameCounter    int
 }
 
+// Prepare a SQL query. Note that there are no optimizations here and this method is only provided for compatibility reasons.
 func (c *Conn) Prepare(query string) (driver.Stmt, error) {
 	return c.PrepareContext(context.Background(), query)
 }
 
+// Close the underlying client connection
 func (c *Conn) Close() error {
 	return c.client.Close()
 }
 
+// Begin is not supported but implemented here for compatibility
 func (c *Conn) Begin() (driver.Tx, error) {
 	return nil, ErrTransactionsNotSupported
 }
 
+// Connect simply returns the connection
 func (c *Conn) Connect(context.Context) (driver.Conn, error) {
 	return c, nil
 }
 
+// Driver returns a Driver singleton
 func (c *Conn) Driver() driver.Driver {
 	return &Driver{}
 }
 
+// Ping checks the status of the ksqlDB cluster using the /info endpoint
 func (c *Conn) Ping(ctx context.Context) error {
 	_, err := c.client.Info(ctx)
 	return err
 }
 
+// ResetSession is a placeholder for compatibility
 func (c *Conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
+// IsValid is a placeholder for compatibility
 func (c *Conn) IsValid() bool {
 	return true
 }
 
-type ExecResult struct{}
+type execResult struct{}
 
-func (e *ExecResult) LastInsertId() (int64, error) {
+// LastInsertId is a placeholder for compatibility
+func (e *execResult) LastInsertId() (int64, error) {
 	return 0, nil
 }
 
-func (e *ExecResult) RowsAffected() (int64, error) {
+// RowsAffected is a placeholder for compatibility
+func (e *execResult) RowsAffected() (int64, error) {
 	return 0, nil
 }
 
+// ExecContext executes any arbitrary ksql statements, except queries
 func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	_, err := c.client.Exec(ctx, ksql.ExecPayload{
 		KSQL:              query,
@@ -70,7 +86,7 @@ func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.Name
 	if err != nil {
 		return nil, err
 	}
-	return &ExecResult{}, nil
+	return &execResult{}, nil
 }
 
 func loadStreamsProperties(args []driver.NamedValue) ksql.StreamsProperties {
@@ -100,10 +116,7 @@ func parseQueryArgs(args []driver.NamedValue) (*ksql.QueryConfig, []driver.Named
 	return config, filteredArgs
 }
 
-var (
-	ErrInvalidQueryStrategy = errors.New("unrecognised query strategy")
-)
-
+// QueryContext runs a SELECT query via the ksqlDB client
 func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	conf, args := parseQueryArgs(args)
 	q, err := buildStatement(query, args)
@@ -126,10 +139,12 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	return nil, ErrInvalidQueryStrategy
 }
 
+// Client exposes the underlying ksql client instance
 func (c *Conn) Client() *ksql.Client {
 	return c.client
 }
 
+// PrepareContext is a placeholder, prepared statements are not supported in ksqlDB
 func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	c.stmtNameCounter++
 	return PreparedStatement{
@@ -139,6 +154,7 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 	}, nil
 }
 
+// BeginTx is a placeholder, transactions are not supported
 func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
 	return nil, ErrTransactionsNotSupported
 }
