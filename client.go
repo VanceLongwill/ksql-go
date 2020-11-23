@@ -50,7 +50,7 @@ type Client struct {
 	insertsStreamWriters []*InsertsStreamWriter
 }
 
-func (c Client) makeRequest(ctx context.Context, urlPath string, method string, rdr io.Reader) (*http.Request, error) {
+func (c *Client) makeRequest(ctx context.Context, urlPath string, method string, rdr io.Reader) (*http.Request, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (q *QueryRows) Close() error {
 }
 
 // Query runs a KSQL query and returns a cursor. For streaming results use the QueryStream method.
-func (c Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, error) {
+func (c *Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -371,7 +371,7 @@ type ExecResult struct {
 }
 
 // Exec runs KSQL statements which can be anything except SELECT
-func (c Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
+func (c *Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -421,7 +421,7 @@ type QueryStreamPayload struct {
 type queryStreamReadCloser struct {
 	queryID string
 	body    io.ReadCloser
-	client  Client
+	client  *Client
 }
 
 func (q *queryStreamReadCloser) Read(b []byte) (int, error) {
@@ -436,7 +436,7 @@ func (q *queryStreamReadCloser) Close() error {
 }
 
 // QueryStream runs a streaming push & pull query
-func (c Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*Rows, error) {
+func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*Rows, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -478,7 +478,7 @@ type CloseQueryPayload struct {
 }
 
 // CloseQuery explicitly terminates a push query stream
-func (c Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) error {
+func (c *Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) error {
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err
@@ -525,7 +525,7 @@ func (i *InsertsStreamCloser) Close() error {
 }
 
 // InsertsStream allows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
-func (c Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
+func (c *Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
 	pr, pw := io.Pipe()
 	req, err := c.makeRequest(ctx, insertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
 	if err != nil {
@@ -582,7 +582,7 @@ type TerminateClusterPayload struct {
 }
 
 // TerminateCluster terminates a running ksqlDB cluster
-func (c Client) TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error {
+func (c *Client) TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error {
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err
@@ -603,7 +603,7 @@ func (c Client) TerminateCluster(ctx context.Context, payload TerminateClusterPa
 type InfoResult map[string]interface{}
 
 // Info returns status information about the ksqlDB cluster
-func (c Client) Info(ctx context.Context) (InfoResult, error) {
+func (c *Client) Info(ctx context.Context) (InfoResult, error) {
 	result := InfoResult{}
 	req, err := c.makeRequest(ctx, infoPath, http.MethodGet, nil)
 	if err != nil {
@@ -634,7 +634,7 @@ type HealthcheckResult struct {
 }
 
 // Healthcheck gets basic health information from the ksqlDB cluster
-func (c Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
+func (c *Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
 	result := HealthcheckResult{}
 	req, err := c.makeRequest(ctx, infoPath, http.MethodGet, nil)
 	if err != nil {
@@ -652,7 +652,7 @@ func (c Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
 }
 
 // Close gracefully closes all open connections in order to reuse TCP connections via keep-alive
-func (c Client) Close() error {
+func (c *Client) Close() error {
 	for _, rows := range c.rows {
 		if rows == nil {
 			continue
