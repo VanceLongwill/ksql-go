@@ -21,8 +21,7 @@ import (
 
 // Client is a ksqlDB client
 type Client struct {
-	client               *http.Client
-	http2                *http.Client
+	http                 *http.Client
 	baseURL              string
 	rows                 []*Rows
 	insertsStreamWriters []*InsertsStreamWriter
@@ -119,7 +118,7 @@ func (c *Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, e
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get response: %w", err)
 	}
@@ -337,7 +336,7 @@ func (c *Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, e
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("unable to make Exec request: %w", err)
 	}
@@ -402,7 +401,7 @@ func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*
 	if err != nil {
 		return nil, err
 	}
-	resp, err := c.http2.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get response: %w", err)
 	}
@@ -443,7 +442,7 @@ func (c *Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) erro
 	if err != nil {
 		return err
 	}
-	if _, err := c.client.Do(req); err != nil {
+	if _, err := c.http.Do(req); err != nil {
 		return err
 	}
 	return nil
@@ -495,7 +494,7 @@ func (c *Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetP
 	g.Go(func() error {
 		return enc.Encode(&payload)
 	})
-	res, err := c.http2.Do(req)
+	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +546,7 @@ func (c *Client) TerminateCluster(ctx context.Context, payload TerminateClusterP
 	if err != nil {
 		return err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
@@ -565,7 +564,7 @@ func (c *Client) Info(ctx context.Context) (InfoResult, error) {
 	if err != nil {
 		return result, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return result, err
 	}
@@ -596,7 +595,7 @@ func (c *Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
 	if err != nil {
 		return result, err
 	}
-	resp, err := c.client.Do(req)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return result, err
 	}
@@ -629,11 +628,10 @@ func (c *Client) Close() error {
 }
 
 // New constructs a new ksqlDB client
-func New(connString string) *Client {
+func New(baseURL string, options ...Option) *Client {
 	client := &Client{
-		baseURL: connString,
-		client:  http.DefaultClient,
-		http2: &http.Client{
+		baseURL: baseURL,
+		http: &http.Client{
 			Transport: &http2.Transport{
 				AllowHTTP: true,
 				DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
@@ -642,5 +640,18 @@ func New(connString string) *Client {
 			},
 		},
 	}
+	for _, opt := range options {
+		opt(client)
+	}
 	return client
+}
+
+// Option represents a function option for the ksqlDB client
+type Option func(*Client)
+
+// WithHTTPClient is an option for the ksqlDB client which allows the user to override the default http client
+func WithHTTPClient(client *http.Client) Option {
+	return func(c *Client) {
+		c.http = client
+	}
 }
