@@ -14,31 +14,9 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
-	"path"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/sync/errgroup"
-)
-
-var (
-	// AcceptJSON is the http accept header for requesting JSON responses
-	AcceptJSON = "application/vnd.ksql.v1+json"
-	// AcceptDelimited is the http accept header for requesting DELIMITED responses (default for push & pull queries)
-	AcceptDelimited = "application/vnd.ksqlapi.delimited.v1"
-)
-
-var (
-	// ksqlDB endpoints
-
-	queryPath            = "/query"
-	execPath             = "/ksql"
-	queryStreamPath      = "/query-stream"
-	closeQueryPath       = "/close-query"
-	insertsStreamPath    = "/inserts-stream"
-	terminateClusterPath = "/ksql/terminate"
-	infoPath             = "/info"
-	healthCheckPath      = "/healthcheck"
 )
 
 // Client is a ksqlDB client
@@ -48,28 +26,6 @@ type Client struct {
 	baseURL              string
 	rows                 []*Rows
 	insertsStreamWriters []*InsertsStreamWriter
-}
-
-func (c *Client) makeRequest(ctx context.Context, urlPath string, method string, rdr io.Reader) (*http.Request, error) {
-	u, err := url.Parse(c.baseURL)
-	if err != nil {
-		return nil, err
-	}
-	u.Path = path.Join(u.Path, urlPath)
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), rdr)
-	if err != nil {
-		return nil, err
-	}
-	switch urlPath {
-	case queryStreamPath, insertsStreamPath:
-		req.Header.Add("Accept", AcceptDelimited)
-		req.Header.Add("Content-Type", AcceptDelimited)
-	default:
-		req.Header.Add("Accept", "application/vnd.ksql.v1+json")
-		req.Header.Add("Content-Type", "application/vnd.ksql.v1+json")
-	}
-	return req, nil
-
 }
 
 // QueryPayload represents the JSON payload for the POST /query endpoint
@@ -159,7 +115,7 @@ func (c *Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, e
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, queryPath, http.MethodPost, b)
+	req, err := makeRequest(ctx, c.baseURL, queryPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +333,7 @@ func (c *Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, e
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, execPath, http.MethodPost, b)
+	req, err := makeRequest(ctx, c.baseURL, execPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +398,7 @@ func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.makeRequest(ctx, queryStreamPath, http.MethodPost, b)
+	req, err := makeRequest(ctx, c.baseURL, queryStreamPath, http.MethodPost, b)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +439,7 @@ func (c *Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) erro
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err
 	}
-	req, err := c.makeRequest(ctx, closeQueryPath, http.MethodPost, b)
+	req, err := makeRequest(ctx, c.baseURL, closeQueryPath, http.MethodPost, b)
 	if err != nil {
 		return err
 	}
@@ -527,7 +483,7 @@ func (i *InsertsStreamCloser) Close() error {
 // InsertsStream allows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
 func (c *Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
 	pr, pw := io.Pipe()
-	req, err := c.makeRequest(ctx, insertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
+	req, err := makeRequest(ctx, c.baseURL, insertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +543,7 @@ func (c *Client) TerminateCluster(ctx context.Context, payload TerminateClusterP
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err
 	}
-	req, err := c.makeRequest(ctx, terminateClusterPath, http.MethodPost, b)
+	req, err := makeRequest(ctx, c.baseURL, terminateClusterPath, http.MethodPost, b)
 	if err != nil {
 		return err
 	}
@@ -605,7 +561,7 @@ type InfoResult map[string]interface{}
 // Info returns status information about the ksqlDB cluster
 func (c *Client) Info(ctx context.Context) (InfoResult, error) {
 	result := InfoResult{}
-	req, err := c.makeRequest(ctx, infoPath, http.MethodGet, nil)
+	req, err := makeRequest(ctx, c.baseURL, infoPath, http.MethodGet, nil)
 	if err != nil {
 		return result, err
 	}
@@ -636,7 +592,7 @@ type HealthcheckResult struct {
 // Healthcheck gets basic health information from the ksqlDB cluster
 func (c *Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
 	result := HealthcheckResult{}
-	req, err := c.makeRequest(ctx, infoPath, http.MethodGet, nil)
+	req, err := makeRequest(ctx, c.baseURL, infoPath, http.MethodGet, nil)
 	if err != nil {
 		return result, err
 	}
