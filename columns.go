@@ -1,13 +1,11 @@
 package ksql
 
-import "database/sql/driver"
-
 type columns struct {
 	count int
 	names []string
 }
 
-func (c columns) Validate(dest []driver.Value) error {
+func (c columns) Validate(dest []interface{}) error {
 	if c.count == -1 {
 		return nil
 	}

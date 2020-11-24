@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"log"
@@ -156,7 +155,7 @@ func run(ctx context.Context) error {
 		defer rows.Close()
 
 		log.Println("Streaming results")
-		dest := make([]driver.Value, 4)
+		dest := make([]interface{}, 4)
 		for {
 			err = rows.Next(dest)
 			if err != nil {

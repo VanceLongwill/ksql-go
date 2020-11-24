@@ -116,6 +116,29 @@ func parseQueryArgs(args []driver.NamedValue) (*ksql.QueryConfig, []driver.Named
 	return config, filteredArgs
 }
 
+type rowWrapper struct {
+	rows ksql.Rows
+}
+
+func (q *rowWrapper) Columns() []string {
+	return q.rows.Columns()
+}
+
+func (q *rowWrapper) Close() error {
+	return q.rows.Close()
+}
+
+func (q *rowWrapper) Next(dest []driver.Value) error {
+	in := make([]interface{}, len(dest))
+	if err := q.rows.Next(in); err != nil {
+		return err
+	}
+	for i := range dest {
+		dest[i] = in[i].(driver.Value)
+	}
+	return nil
+}
+
 // QueryContext runs a SELECT query via the ksqlDB client
 func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	conf, args := parseQueryArgs(args)
@@ -125,15 +148,17 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	}
 	switch conf.Strategy {
 	case ksql.StreamQuery:
-		return c.client.QueryStream(ctx, ksql.QueryStreamPayload{
+		rows, err := c.client.QueryStream(ctx, ksql.QueryStreamPayload{
 			KSQL:       q,
 			Properties: conf.StreamsProperties,
 		})
+		return &rowWrapper{rows}, err
 	case ksql.StaticQuery:
-		return c.client.Query(ctx, ksql.QueryPayload{
+		rows, err := c.client.Query(ctx, ksql.QueryPayload{
 			KSQL:              q,
 			StreamsProperties: conf.StreamsProperties,
 		})
+		return &rowWrapper{rows}, err
 
 	}
 	return nil, ErrInvalidQueryStrategy

@@ -5,9 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"io"
@@ -23,7 +21,7 @@ import (
 type Client struct {
 	http                 *http.Client
 	baseURL              string
-	rows                 []*Rows
+	rows                 []*QueryStreamRows
 	insertsStreamWriters []*InsertsStreamWriter
 }
 
@@ -37,7 +35,7 @@ type QueryPayload struct {
 
 // Row is a row in the DB
 type Row struct {
-	Columns []driver.Value `json:"columns"`
+	Columns []interface{} `json:"columns"`
 }
 
 // QueryResult is the result of running a query
@@ -57,54 +55,6 @@ func (q *QueryError) Error() string {
 		return msg.(string)
 	}
 	return "an unknown error occurred"
-}
-
-// QueryRows is a row iterator for static queries
-type QueryRows struct {
-	res    []map[string]interface{}
-	i      int
-	closed bool
-	columns
-}
-
-// Next implements the sql driver row interface used for interating over rows
-func (q *QueryRows) Next(dest []driver.Value) error {
-	if q.closed {
-		return ErrRowsClosed
-	}
-	if q.i > len(q.res)-1 {
-		return io.EOF
-	}
-	row, exists := q.res[q.i]["row"]
-	if !exists {
-		return errors.New("unable to get row object")
-	}
-	rowMap, ok := row.(map[string]interface{})
-	if !ok {
-		return errors.New("row object has incorrect type")
-	}
-	cols, ok := rowMap["columns"]
-	if !ok {
-		return errors.New("unable to get columns from row object")
-	}
-	colsSlice, ok := cols.([]interface{})
-	if !ok {
-		return errors.New("unable to convert columns to slice")
-	}
-	if err := q.columns.Validate(dest); err != nil {
-		return err
-	}
-	for idx, v := range colsSlice {
-		dest[idx] = v.(driver.Value)
-	}
-	q.i++
-	return nil
-}
-
-// Close closes the rows interator
-func (q *QueryRows) Close() error {
-	q.closed = true
-	return nil
 }
 
 // Query runs a KSQL query and returns a cursor. For streaming results use the QueryStream method.
@@ -391,7 +341,7 @@ func (q *queryStreamReadCloser) Close() error {
 }
 
 // QueryStream runs a streaming push & pull query
-func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*Rows, error) {
+func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*QueryStreamRows, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -410,7 +360,7 @@ func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*
 	if err := dec.Decode(&header); err != nil {
 		return nil, err
 	}
-	r := &Rows{
+	r := &QueryStreamRows{
 		ctx: ctx,
 		body: &queryStreamReadCloser{
 			queryID: header.QueryID,
