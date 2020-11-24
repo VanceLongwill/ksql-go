@@ -13,7 +13,10 @@ import (
 )
 
 func run(ctx context.Context) error {
-	db, err := sql.Open("ksqldb", "http://0.0.0.0:8088/")
+	db := sql.OpenDB(stdlib.NewConnector(
+		ksql.New("http://0.0.0.0:8088/"),
+	))
+	err := db.Ping()
 	if err != nil {
 		return err
 	}
