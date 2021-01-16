@@ -11,7 +11,7 @@ type DescribeResult struct {
 	SourceDescription SourceDescription `json:"sourceDescription,omitempty"`
 }
 
-func (d *DescribeResult) Is(target ExecResult) bool {
+func (d *DescribeResult) is(target ExecResult) bool {
 	if target.DescribeResult != nil {
 		*d = *target.DescribeResult
 		d.commonResult = target.commonResult

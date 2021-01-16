@@ -23,7 +23,7 @@ type ListStreamsResult struct {
 	Streams []Stream `json:"streams,omitempty"`
 }
 
-func (ls *ListStreamsResult) Is(target ExecResult) bool {
+func (ls *ListStreamsResult) is(target ExecResult) bool {
 	if target.ListStreamsResult != nil {
 		*ls = *target.ListStreamsResult
 		ls.commonResult = target.commonResult
@@ -64,7 +64,7 @@ type ListTablesResult struct {
 	Tables []Table `json:"tables,omitempty"`
 }
 
-func (lt *ListTablesResult) Is(target ExecResult) bool {
+func (lt *ListTablesResult) is(target ExecResult) bool {
 	if target.ListTablesResult != nil {
 		*lt = *target.ListTablesResult
 		lt.commonResult = target.commonResult
@@ -91,7 +91,7 @@ type ListQueriesResult struct {
 	Queries []Query `json:"queries,omitempty"`
 }
 
-func (lq *ListQueriesResult) Is(target ExecResult) bool {
+func (lq *ListQueriesResult) is(target ExecResult) bool {
 	if target.ListQueriesResult != nil {
 		*lq = *target.ListQueriesResult
 		lq.commonResult = target.commonResult
@@ -117,7 +117,7 @@ type ListPropertiesResult struct {
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
-func (lp *ListPropertiesResult) Is(target ExecResult) bool {
+func (lp *ListPropertiesResult) is(target ExecResult) bool {
 	if target.ListPropertiesResult != nil {
 		*lp = *target.ListPropertiesResult
 		lp.commonResult = target.commonResult

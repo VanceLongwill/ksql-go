@@ -14,7 +14,7 @@ type ExplainResult struct {
 	OverriddenProperties map[string]interface{} `json:"overriddenProperties,omitempty"`
 }
 
-func (e *ExplainResult) Is(target ExecResult) bool {
+func (e *ExplainResult) is(target ExecResult) bool {
 	if target.ExplainResult != nil {
 		*e = *target.ExplainResult
 		e.commonResult = target.commonResult

@@ -18,7 +18,7 @@ type ksqldb struct {
 	insertsStreamWriters []*InsertsStreamWriter
 }
 
-// Client is a ksqlDB client
+// Client is a ksqlDB REST API client
 type Client interface {
 	// Close closes all open connections
 	Close() error
@@ -50,7 +50,7 @@ type Client interface {
 	TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error
 }
 
-// New constructs a new ksqlDB client
+// New constructs a new ksqlDB REST API client
 func New(baseURL string, options ...Option) Client {
 	client := &ksqldb{
 		baseURL: baseURL,

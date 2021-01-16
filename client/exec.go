@@ -57,14 +57,14 @@ type ExecResult struct {
 }
 
 type Result interface {
-	Is(target ExecResult) bool
+	is(target ExecResult) bool
 }
 
 // As checks if the ExecResult contains a subset result.
 // If it does, then data is copied over for convenience.
 func (e ExecResult) As(target Result) bool {
 	if t, ok := target.(Result); ok {
-		return t.Is(e)
+		return t.is(e)
 	}
 	return false
 }

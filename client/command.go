@@ -1,5 +1,6 @@
 package client
 
+// CommandResult contains information about a CREATE, DROP or TERMINATE command
 type CommandResult struct {
 	commonResult
 
@@ -9,7 +10,7 @@ type CommandResult struct {
 	CommandStatus CommandStatus `json:"commandStatus,omitempty"`
 }
 
-func (c *CommandResult) Is(target ExecResult) bool {
+func (c *CommandResult) is(target ExecResult) bool {
 	if target.CommandResult != nil {
 		*c = *target.CommandResult
 		c.commonResult = target.commonResult
