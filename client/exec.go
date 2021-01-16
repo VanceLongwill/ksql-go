@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -34,46 +35,42 @@ type ExecResult struct {
 	commonResult
 
 	// CREATE, DROP, TERMINATE
-
-	// CommandID is the identified for the requested operation. You can use this ID to poll the result of the operation using the status endpoint.
-	CommandID string `json:"commandId,omitempty"`
-	// CommandStatus is the status of the requested operation.
-	CommandStatus CommandStatus `json:"commandStatus,omitempty"`
+	*CommandResult
 
 	// LIST STREAMS, SHOW STREAMS
-
-	// Streams is the list of streams returned
-	Streams []Stream `json:"streams,omitempty"`
+	*ListStreamsResult
 
 	// LIST TABLES, SHOW TABLES
-
-	ListTablesResult
+	*ListTablesResult
 
 	// LIST QUERIES, SHOW QUERIES
-
-	// Queries is the list of queries started
-	Queries []Query `json:"queries,omitempty"`
+	*ListQueriesResult
 
 	// LIST PROPERTIES, SHOW PROPERTIES
-
-	// Properties is the map of server query properties
-	Properties map[string]string `json:"properties,omitempty"`
+	*ListPropertiesResult
 
 	// DESCRIBE
-
-	// SourceDescription is a detailed description of the source (a STREAM or TABLE)
-	SourceDescription SourceDescription `json:"sourceDescription,omitempty"`
+	*DescribeResult
 
 	// EXPLAIN
+	*ExplainResult
+}
 
-	// QueryDescription is a detailed description of a query statement.
-	QueryDescription QueryDescription `json:"queryDescription,omitempty"`
-	// OverriddenProperties is a map of property overrides that the query is running with.
-	OverriddenProperties map[string]interface{} `json:"overriddenProperties,omitempty"`
+type Result interface {
+	Is(target ExecResult) bool
+}
+
+// As checks if the ExecResult contains a subset result.
+// If it does, then data is copied over for convenience.
+func (e ExecResult) As(target Result) bool {
+	if t, ok := target.(Result); ok {
+		return t.Is(e)
+	}
+	return false
 }
 
 // Exec runs KSQL statements which can be anything except SELECT
-func (c *Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
+func (c *ksqldb) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -100,4 +97,19 @@ func (c *Client) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, e
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+func (c *ksqldb) singleExec(ctx context.Context, payload ExecPayload) (ExecResult, error) {
+	var resp ExecResult
+	results, err := c.Exec(ctx, payload)
+	if err != nil {
+		return resp, err
+	}
+	if len(results) == 0 {
+		return resp, errors.New("Unexpected empty response list from Exec")
+	}
+	if len(results) > 1 {
+		return resp, errors.New("Expected only 1 result from Exec")
+	}
+	return results[0], nil
 }

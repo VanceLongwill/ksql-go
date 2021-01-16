@@ -62,7 +62,7 @@ func (q *QueryError) Error() string {
 }
 
 // Query runs a KSQL query and returns a cursor. For streaming results use the QueryStream method.
-func (c *Client) Query(ctx context.Context, payload QueryPayload) (*QueryRows, error) {
+func (c *ksqldb) Query(ctx context.Context, payload QueryPayload) (*QueryRows, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {

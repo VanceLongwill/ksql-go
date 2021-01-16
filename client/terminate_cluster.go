@@ -14,7 +14,7 @@ type TerminateClusterPayload struct {
 }
 
 // TerminateCluster terminates a running ksqlDB cluster
-func (c *Client) TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error {
+func (c *ksqldb) TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error {
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err

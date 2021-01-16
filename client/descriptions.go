@@ -5,38 +5,14 @@ type Warning struct {
 	Message string `json:"message"`
 }
 
-// Stream is info about a stream
-type Stream struct {
-	// Name is the name of the stream
-	Name string `json:"name"`
-	// Topic is the associated Kafka topic
-	Topic string `json:"topic"`
-	// Format is the serialization format of the stream. One of JSON, AVRO, PROTOBUF, or DELIMITED.
-	Format string `json:"format"`
-	// Type is always 'STREAM'
-	Type string `json:"type"`
-}
-
 // Common to all exec responses
 type commonResult struct {
 	// StatementText is the text of the SQL statement where the error occurred
 	StatementText string `json:"statementText"`
 	// A list of non-fatal warning messages
 	Warnings []Warning `json:"warnings"`
-}
 
-// Table is info about a table
-type Table struct {
-	// Name of the table.
-	Name string `json:"name"`
-	// Topic backing the table.
-	Topic string `json:"topic"`
-	// The serialization format of the data in the table. One of JSON, AVRO, PROTOBUF, or DELIMITED.
-	Format string `json:"format"`
-	// The source type. Always returns 'TABLE'.
-	Type string `json:"type"`
-	// IsWindowed is true if the table provides windowed results; otherwise, false.
-	IsWindowed bool `json:"isWindowed"`
+	statementType string
 }
 
 // Query is info about a query

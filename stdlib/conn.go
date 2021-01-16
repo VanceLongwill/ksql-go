@@ -19,7 +19,7 @@ var (
 
 // Conn provides the driver.Conn interface for interacting with the ksqlDB client
 type Conn struct {
-	client             *ksql.Client
+	client             ksql.Client
 	preparedStatements map[string]PreparedStatement
 	stmtNameCounter    int
 }
@@ -165,7 +165,7 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 
 // Client exposes the underlying ksql client instance
-func (c *Conn) Client() *ksql.Client {
+func (c *Conn) Client() ksql.Client {
 	return c.client
 }
 

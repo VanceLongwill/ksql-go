@@ -20,7 +20,7 @@ type HealthcheckResult struct {
 }
 
 // Healthcheck gets basic health information from the ksqlDB cluster
-func (c *Client) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
+func (c *ksqldb) Healthcheck(ctx context.Context) (HealthcheckResult, error) {
 	result := HealthcheckResult{}
 	req, err := makeRequest(ctx, c.baseURL, infoPath, http.MethodGet, nil)
 	if err != nil {

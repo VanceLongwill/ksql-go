@@ -10,7 +10,7 @@ import (
 type InfoResult map[string]interface{}
 
 // Info returns status information about the ksqlDB cluster
-func (c *Client) Info(ctx context.Context) (InfoResult, error) {
+func (c *ksqldb) Info(ctx context.Context) (InfoResult, error) {
 	result := InfoResult{}
 	req, err := makeRequest(ctx, c.baseURL, infoPath, http.MethodGet, nil)
 	if err != nil {

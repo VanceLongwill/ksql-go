@@ -43,7 +43,7 @@ func (i *InsertsStreamCloser) Close() error {
 }
 
 // InsertsStream allows you to insert rows into an existing ksqlDB stream. The stream must have already been created in ksqlDB.
-func (c *Client) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
+func (c *ksqldb) InsertsStream(ctx context.Context, payload InsertsStreamTargetPayload) (*InsertsStreamWriter, error) {
 	pr, pw := io.Pipe()
 	req, err := makeRequest(ctx, c.baseURL, insertsStreamPath, http.MethodPost, ioutil.NopCloser(pr))
 	if err != nil {

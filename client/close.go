@@ -1,7 +1,7 @@
 package client
 
 // Close gracefully closes all open connections in order to reuse TCP connections via keep-alive
-func (c *Client) Close() error {
+func (c *ksqldb) Close() error {
 	for _, rows := range c.rows {
 		if rows == nil {
 			continue

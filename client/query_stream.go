@@ -30,7 +30,7 @@ type QueryStreamPayload struct {
 type queryStreamReadCloser struct {
 	queryID string
 	body    io.ReadCloser
-	client  *Client
+	client  *ksqldb
 }
 
 func (q *queryStreamReadCloser) Read(b []byte) (int, error) {
@@ -45,7 +45,7 @@ func (q *queryStreamReadCloser) Close() error {
 }
 
 // QueryStream runs a streaming push & pull query
-func (c *Client) QueryStream(ctx context.Context, payload QueryStreamPayload) (*QueryStreamRows, error) {
+func (c *ksqldb) QueryStream(ctx context.Context, payload QueryStreamPayload) (*QueryStreamRows, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)
 	if err != nil {
@@ -87,7 +87,7 @@ type CloseQueryPayload struct {
 }
 
 // CloseQuery explicitly terminates a push query stream
-func (c *Client) CloseQuery(ctx context.Context, payload CloseQueryPayload) error {
+func (c *ksqldb) CloseQuery(ctx context.Context, payload CloseQueryPayload) error {
 	b := &bytes.Buffer{}
 	if err := json.NewEncoder(b).Encode(&payload); err != nil {
 		return err

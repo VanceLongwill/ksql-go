@@ -9,7 +9,7 @@ import (
 
 // Connector implements the database/sql/driver package's Connector interface
 type Connector struct {
-	client *ksql.Client
+	client ksql.Client
 }
 
 // Connect returns a new connection with access to the client
@@ -23,12 +23,12 @@ func (c *Connector) Driver() driver.Driver {
 }
 
 // Client returns the connector's ksql client
-func (c *Connector) Client() *ksql.Client {
+func (c *Connector) Client() ksql.Client {
 	return c.client
 }
 
 // NewConnector allows a specific client to be passed to database/sql compatible connectors
-func NewConnector(client *ksql.Client) *Connector {
+func NewConnector(client ksql.Client) *Connector {
 	return &Connector{client}
 }
 
