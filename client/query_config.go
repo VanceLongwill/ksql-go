@@ -1,4 +1,4 @@
-package ksql
+package client
 
 // QueryStrategy is used to
 type QueryStrategy string

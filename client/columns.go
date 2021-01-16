@@ -1,4 +1,4 @@
-package ksql
+package client
 
 type columns struct {
 	count int

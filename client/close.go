@@ -1,4 +1,4 @@
-package ksql
+package client
 
 // Close gracefully closes all open connections in order to reuse TCP connections via keep-alive
 func (c *Client) Close() error {

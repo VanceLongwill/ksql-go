@@ -1,4 +1,4 @@
-package ksql
+package client
 
 import (
 	"bytes"
@@ -47,8 +47,7 @@ type ExecResult struct {
 
 	// LIST TABLES, SHOW TABLES
 
-	// Tables is the list of tables returned
-	Tables []Table `json:"tables,omitempty"`
+	ListTablesResult
 
 	// LIST QUERIES, SHOW QUERIES
 

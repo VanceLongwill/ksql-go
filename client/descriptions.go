@@ -1,4 +1,4 @@
-package ksql
+package client
 
 // Warning represents a non-fatal user warning
 type Warning struct {

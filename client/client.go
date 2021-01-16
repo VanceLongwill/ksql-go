@@ -1,4 +1,4 @@
-package ksql
+package client
 
 import (
 	"crypto/tls"

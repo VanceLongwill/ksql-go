@@ -1,4 +1,4 @@
-package ksql
+package client
 
 // StreamsProperties is a map of property overrides
 // https://docs.ksqldb.io/en/latest/operate-and-deploy/installation/server-config/config-reference/
