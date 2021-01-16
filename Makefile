@@ -1,4 +1,5 @@
 .PHONY: lint test coverage build build-examples
+.SILENT: lint test coverage build build-examples
 
 lint:
 	golint ./... && go vet ./...
