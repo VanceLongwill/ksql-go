@@ -13,5 +13,5 @@ build:
 	go build ./...
 
 build-examples:
-	find ./_examples -type d -mindepth 1 | xargs -I {} bash -c 'printf "Building {}"; go build -o /dev/null {}; printf "    Done\n"'
+	find ./examples -type d -mindepth 1 | xargs -I {} bash -c 'printf "Building {}\n"; cd {}; go build -o /dev/null .; cd - &>/dev/null'
 
