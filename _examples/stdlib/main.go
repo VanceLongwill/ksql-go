@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/vancelongwill/ksql"
 	"github.com/vancelongwill/ksql/_examples/seeder"
+	ksql "github.com/vancelongwill/ksql/client"
 	"github.com/vancelongwill/ksql/stdlib"
 )
 

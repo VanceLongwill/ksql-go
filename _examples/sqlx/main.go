@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/vancelongwill/ksql"
+	ksql "github.com/vancelongwill/ksql/client"
 	_ "github.com/vancelongwill/ksql/stdlib"
 
 	"github.com/vancelongwill/ksql/_examples/seeder"

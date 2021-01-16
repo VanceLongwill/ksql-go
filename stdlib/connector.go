@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 
-	"github.com/vancelongwill/ksql"
+	ksql "github.com/vancelongwill/ksql/client"
 )
 
 // Connector implements the database/sql/driver package's Connector interface

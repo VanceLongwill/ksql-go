@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/vancelongwill/ksql"
+	ksql "github.com/vancelongwill/ksql/client"
 	"golang.org/x/sync/errgroup"
 )
 
