@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
 
 // ErrAckUnsucessful signifies that the document couldn't be written the the stream
@@ -13,6 +14,7 @@ var ErrAckUnsucessful = errors.New("an ack was received but the status was not '
 
 // InsertsStreamWriter represents an inserts stream
 type InsertsStreamWriter struct {
+	mu     sync.Mutex
 	enc    *json.Encoder
 	ackMap map[int64]string
 	curr   int64
@@ -23,28 +25,27 @@ type InsertsStreamWriter struct {
 
 // WriteJSON encodes and writes p to the inserts stream, and waits for the corresponding Ack to be received
 func (i *InsertsStreamWriter) WriteJSON(ctx context.Context, p interface{}) error {
+	i.mu.Lock()
 	curr := i.curr
-	defer func() {
-		i.curr++
-	}()
 	if err := i.enc.Encode(&p); err != nil {
 		return err
 	}
-	if a, ok := i.ackMap[curr]; ok {
-		if a != "ok" {
-			return ErrAckUnsucessful
-		}
-		return nil
-	}
+	i.curr++
+	i.mu.Unlock()
+	// @TODO: cleaner way to process acks
 	for {
+		// check if the ack has been received in another goroutine
+		if a, ok := i.ackMap[curr]; ok {
+			if a != "ok" {
+				return ErrAckUnsucessful
+			}
+			delete(i.ackMap, curr)
+			return nil
+		}
 		select {
-		case ack := <-i.ackCh:
-			i.ackMap[ack.Seq] = ack.Status
-			if a, ok := i.ackMap[curr]; ok {
-				if a != "ok" {
-					return ErrAckUnsucessful
-				}
-				return nil
+		case ack, ok := <-i.ackCh:
+			if ok {
+				i.ackMap[ack.Seq] = ack.Status
 			}
 		case err := <-i.errCh:
 			return err
