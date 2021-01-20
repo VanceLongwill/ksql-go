@@ -102,10 +102,8 @@ func (r *QueryStreamRows) Next(dest []interface{}) error {
 
 // Close safely closes the response, allowing connections to be kept alive
 func (r *QueryStreamRows) Close() error {
-	if r.body != nil {
-		if err := r.body.Close(); err != nil {
-			return err
-		}
+	if err := r.body.Close(); err != nil {
+		return err
 	}
 	r.closed = true
 	return nil
