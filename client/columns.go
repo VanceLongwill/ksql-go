@@ -1,12 +1,14 @@
 package client
 
+const unset int = -1
+
 type columns struct {
 	count int
 	names []string
 }
 
 func (c columns) Validate(dest []interface{}) error {
-	if c.count == -1 {
+	if c.count == unset {
 		return nil
 	}
 	if len(dest) != c.count {
@@ -16,16 +18,11 @@ func (c columns) Validate(dest []interface{}) error {
 }
 
 func (c columns) Columns() []string {
-	if len(c.names) > 0 {
+	if len(c.names) > 0 &&
+		(c.count == unset || len(c.names) == c.count) {
 		return c.names
 	}
-	if c.count > 0 {
-		// if there's no column names provided, just return empty strings
-		cols := make([]string, c.count)
-		for i := range cols {
-			cols[i] = ""
-		}
-		return cols
-	}
-	return []string{}
+	// if there's no column names provided, just return empty strings
+	cols := make([]string, c.count)
+	return cols
 }

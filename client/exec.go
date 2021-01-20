@@ -63,10 +63,7 @@ type Result interface {
 // As checks if the ExecResult contains a subset result.
 // If it does, then data is copied over for convenience.
 func (e ExecResult) As(target Result) bool {
-	if t, ok := target.(Result); ok {
-		return t.is(e)
-	}
-	return false
+	return target.is(e)
 }
 
 // Exec runs KSQL statements which can be anything except SELECT
@@ -106,10 +103,10 @@ func (c *ksqldb) singleExec(ctx context.Context, payload ExecPayload) (ExecResul
 		return resp, err
 	}
 	if len(results) == 0 {
-		return resp, errors.New("Unexpected empty response list from Exec")
+		return resp, errors.New("unexpected empty response list from Exec")
 	}
 	if len(results) > 1 {
-		return resp, errors.New("Expected only 1 result from Exec")
+		return resp, errors.New("expected only 1 result from Exec")
 	}
 	return results[0], nil
 }

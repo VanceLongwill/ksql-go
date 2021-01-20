@@ -147,7 +147,8 @@ func run(ctx context.Context) error {
 	g.Go(func() error {
 		log.Println("Querying table")
 		rows, err := db.QueryStream(ctx, ksql.QueryStreamPayload{
-			KSQL: "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
+			KSQL:       "SELECT * FROM t1 WHERE v1 > -1 EMIT CHANGES;",
+			Properties: ksql.NewStreamsProperties(ksql.OffsetEarliest),
 		})
 		if err != nil {
 			return err

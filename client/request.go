@@ -41,8 +41,8 @@ func makeRequest(ctx context.Context, baseURL string, slug string, method string
 		req.Header.Add("Accept", acceptDelim)
 		req.Header.Add("Content-Type", acceptDelim)
 	default:
-		req.Header.Add("Accept", "application/vnd.ksql.v1+json")
-		req.Header.Add("Content-Type", "application/vnd.ksql.v1+json")
+		req.Header.Add("Accept", acceptJSON)
+		req.Header.Add("Content-Type", acceptJSON)
 	}
 	return req, nil
 }

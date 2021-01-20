@@ -46,22 +46,30 @@ type Client interface {
 	Query(ctx context.Context, payload QueryPayload) (*QueryRows, error)
 	// QueryStream runs a streaming push & pull query
 	QueryStream(ctx context.Context, payload QueryStreamPayload) (*QueryStreamRows, error)
+	// CloseQuery explicitly terminates a push query stream
+	CloseQuery(ctx context.Context, payload CloseQueryPayload) error
 	// TerminateCluster terminates a running ksqlDB cluster
 	TerminateCluster(ctx context.Context, payload TerminateClusterPayload) error
 }
 
-// New constructs a new ksqlDB REST API client
+func createInsecureHTTP2Client() *http.Client {
+	return &http.Client{
+		Transport: &http2.Transport{
+			AllowHTTP: true,
+			DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
+				return net.Dial(network, addr)
+			},
+		},
+	}
+}
+
+// New constructs a new ksqlDB REST API client.
+//
+// By default this uses an insecure HTTP2 client. In production you should pass in your own client via the WithHTTPClient option.
 func New(baseURL string, options ...Option) Client {
 	client := &ksqldb{
 		baseURL: baseURL,
-		http: &http.Client{
-			Transport: &http2.Transport{
-				AllowHTTP: true,
-				DialTLS: func(network string, addr string, cfg *tls.Config) (net.Conn, error) {
-					return net.Dial(network, addr)
-				},
-			},
-		},
+		http:    createInsecureHTTP2Client(),
 	}
 	for _, opt := range options {
 		opt(client)

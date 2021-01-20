@@ -76,10 +76,10 @@ type QueryStreamRows struct {
 }
 
 func (r *QueryStreamRows) next(dest []interface{}) error {
+	if r.closed {
+		return ErrRowsClosed
+	}
 	if err := r.dec.Decode(&dest); err != nil {
-		if r.closed {
-			return ErrRowsClosed
-		}
 		return err
 	}
 	return r.columns.Validate(dest)

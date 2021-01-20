@@ -87,7 +87,7 @@ func (c *ksqldb) Query(ctx context.Context, payload QueryPayload) (*QueryRows, e
 		return nil, err
 	}
 	cols := columns{
-		count: -1,
+		count: unset,
 	}
 	if h, ok := resultsRaw[0]["header"]; ok {
 		if headerMap, ok := h.(map[string]interface{}); ok {
