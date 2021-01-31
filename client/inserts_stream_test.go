@@ -116,7 +116,7 @@ func TestInsertsStream(t *testing.T) {
 		)
 		srv.StartTLS()
 		defer srv.Close()
-		c := New(srv.URL, WithHTTPClient(testutils.ClientForServer(srv)))
+		c := New(srv.URL, WithHTTPClient(testutils.Client()))
 		wtr, err := c.InsertsStream(context.Background(), payload)
 		assert.NoError(t, err)
 		for _, w := range writes {

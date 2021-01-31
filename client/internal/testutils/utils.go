@@ -24,9 +24,9 @@ func Server(pattern string, mock http.HandlerFunc) *httptest.Server {
 	return srv
 }
 
-// ClientForServer returns a http client compatible with the http2 test server
-func ClientForServer(srv *httptest.Server) *http.Client {
-	tr := &http.Transport{TLSClientConfig: srv.Config.TLSConfig}
+// Client returns a http client compatible with the http2 test server
+func Client() *http.Client {
+	tr := &http.Transport{}
 	if err := http2.ConfigureTransport(tr); err != nil {
 		panic(fmt.Errorf("Failed to configure http2 transport: %v", err))
 	}
