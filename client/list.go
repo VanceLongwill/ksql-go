@@ -111,6 +111,7 @@ func (c *ksqldb) ListQueries(ctx context.Context) (ListQueriesResult, error) {
 	return lq, nil
 }
 
+// ListPropertiesResult represents the response for a `LIST PROPERTIES;` statement
 type ListPropertiesResult struct {
 	commonResult
 	// Properties is the map of server query properties

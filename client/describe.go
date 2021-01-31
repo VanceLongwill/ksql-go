@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// DescribeResult represents the response from a DESCRIBE statement
 type DescribeResult struct {
 	commonResult
 	// SourceDescription is a detailed description of the source (a STREAM or TABLE)

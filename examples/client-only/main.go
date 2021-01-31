@@ -68,7 +68,7 @@ INSERT INTO s1 (
 );`
 )
 
-type DataRow struct {
+type dataRow struct {
 	K  string `json:"k"`
 	V1 int    `json:"v1"`
 	V2 string `json:"v2"`
@@ -129,7 +129,7 @@ func run(ctx context.Context) error {
 		}
 		defer wtr.Close()
 		time.Sleep(2 * time.Second)
-		dataRows := []DataRow{
+		dataRows := []dataRow{
 			{K: strconv.Itoa(r1.Int()), V1: 99, V2: "yes", V3: true},
 			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},
 			{K: strconv.Itoa(r1.Int()), V1: 19292, V2: "asdasd", V3: false},

@@ -60,7 +60,7 @@ func TestInsertsStreamCloser(t *testing.T) {
 }
 
 func TestInsertsStream(t *testing.T) {
-	type DataRow struct {
+	type dataRow struct {
 		K  string `json:"k"`
 		V1 int    `json:"v1"`
 		V2 string `json:"v2"`
@@ -71,9 +71,9 @@ func TestInsertsStream(t *testing.T) {
 			Target: "sometarget",
 		}
 		writes := []interface{}{
-			DataRow{K: "a", V1: 99, V2: "yes", V3: true},
-			DataRow{K: "b", V1: 19292, V2: "asdasd", V3: false},
-			DataRow{K: "c", V1: 19292, V2: "asdasd", V3: false},
+			dataRow{K: "a", V1: 99, V2: "yes", V3: true},
+			dataRow{K: "b", V1: 19292, V2: "asdasd", V3: false},
+			dataRow{K: "c", V1: 19292, V2: "asdasd", V3: false},
 		}
 		var acks []interface{}
 		for i := range writes {
@@ -100,7 +100,7 @@ func TestInsertsStream(t *testing.T) {
 
 				enc := json.NewEncoder(w)
 				for i, expected := range writes {
-					var insert DataRow
+					var insert dataRow
 					err = dec.Decode(&insert)
 					assert.NoError(t, err)
 					assert.Equal(t, expected, insert)

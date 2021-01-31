@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// ExplainResult represents the response for an `EXPLAIN` statement
 type ExplainResult struct {
 	commonResult
 

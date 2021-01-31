@@ -56,6 +56,9 @@ type ExecResult struct {
 	*ExplainResult
 }
 
+// Result is common interface implemented by all result types for the ksqlDB REST API.
+//
+// Internaly, it is used to convert generic responses in to narrower structs
 type Result interface {
 	is(target ExecResult) bool
 }
@@ -66,7 +69,7 @@ func (e ExecResult) As(target Result) bool {
 	return target.is(e)
 }
 
-// Exec runs KSQL statements which can be anything except SELECT
+// Exec runs KSQL statements which can be anything except `SELECT`, which is not supported by the ksqlDB REST API.
 func (c *ksqldb) Exec(ctx context.Context, payload ExecPayload) ([]ExecResult, error) {
 	b := &bytes.Buffer{}
 	err := json.NewEncoder(b).Encode(&payload)

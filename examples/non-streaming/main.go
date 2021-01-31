@@ -8,7 +8,7 @@ import (
 	"log"
 )
 
-type RowResult struct {
+type rowResult struct {
 	K  string `db:"K"`
 	V1 int    `db:"V1"`
 	V2 string `db:"V2"`
@@ -24,7 +24,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 	log.Println("Getting matching row")
-	var r RowResult
+	var r rowResult
 	err = db.GetContext(ctx, &r, "SELECT * FROM t1 WHERE k = 'k2';")
 	if err != nil {
 		return err

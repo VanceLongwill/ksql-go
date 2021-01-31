@@ -13,6 +13,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
+// Server starts an insecure http2 enabled server for testing a route
 func Server(pattern string, mock http.HandlerFunc) *httptest.Server {
 	handler := http.NewServeMux()
 	handler.HandleFunc(pattern, mock)
@@ -23,6 +24,7 @@ func Server(pattern string, mock http.HandlerFunc) *httptest.Server {
 	return srv
 }
 
+// ClientForServer returns a http client compatible with the http2 test server
 func ClientForServer(srv *httptest.Server) *http.Client {
 	tr := &http.Transport{TLSClientConfig: srv.Config.TLSConfig}
 	if err := http2.ConfigureTransport(tr); err != nil {
@@ -32,6 +34,8 @@ func ClientForServer(srv *httptest.Server) *http.Client {
 	return &http.Client{Transport: tr}
 }
 
+// StreamingHandler matches an initial JSON request body with the given in param, then
+// writes each of the given outs params to the response waiting 100ms inbetween each
 func StreamingHandler(t *testing.T, in interface{}, outs ...interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v := reflect.New(reflect.TypeOf(in).Elem()).Interface()
@@ -50,6 +54,8 @@ func StreamingHandler(t *testing.T, in interface{}, outs ...interface{}) http.Ha
 	}
 }
 
+// Handler returns a http handler which decodes and matches JSON request bodies with the in interface{},
+// and writes the out interface{} as JSON to the response writer
 func Handler(t *testing.T, in interface{}, out interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v := reflect.New(reflect.TypeOf(in).Elem()).Interface()

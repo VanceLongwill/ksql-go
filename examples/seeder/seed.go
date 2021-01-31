@@ -59,10 +59,12 @@ INSERT INTO s1 (
 );`
 )
 
+// Seeder is used to seed some dummy data into the DB for use in other examples
 type Seeder struct {
 	db *sql.DB
 }
 
+// Seed creates the relevant tables and inserts the dummy data
 func (s *Seeder) Seed(ctx context.Context) error {
 	log.Println("Setting offset to earliest")
 	if _, err := s.db.ExecContext(ctx, "SET 'auto.offset.reset' = 'earliest';"); err != nil {
@@ -83,6 +85,7 @@ func (s *Seeder) Seed(ctx context.Context) error {
 	return nil
 }
 
+// New returns a new seeder for the given DB
 func New(db *sql.DB) *Seeder {
 	return &Seeder{db}
 }
