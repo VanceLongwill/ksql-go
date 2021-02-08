@@ -9,7 +9,7 @@ import (
 type PreparedStatement struct {
 	Name string
 	SQL  string
-	conn *Conn
+	conn *conn
 }
 
 // ExecContext is equivalent to running the given sql statement via the ExecerContext interface

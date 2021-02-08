@@ -17,51 +17,53 @@ var (
 	ErrInvalidQueryStrategy = errors.New("unrecognised query strategy")
 )
 
-// Conn provides the driver.Conn interface for interacting with the ksqlDB client
-type Conn struct {
+//go:generate mockgen -source ../client/client.go -destination mocks/client.go -package mocks
+
+// conn provides the driver.conn interface for interacting with the ksqlDB client
+type conn struct {
 	client             ksql.Client
 	preparedStatements map[string]PreparedStatement
 	stmtNameCounter    int
 }
 
 // Prepare a SQL query. Note that there are no optimizations here and this method is only provided for compatibility reasons.
-func (c *Conn) Prepare(query string) (driver.Stmt, error) {
+func (c *conn) Prepare(query string) (driver.Stmt, error) {
 	return c.PrepareContext(context.Background(), query)
 }
 
 // Close the underlying client connection
-func (c *Conn) Close() error {
+func (c *conn) Close() error {
 	return c.client.Close()
 }
 
 // Begin is not supported but implemented here for compatibility
-func (c *Conn) Begin() (driver.Tx, error) {
-	return nil, ErrTransactionsNotSupported
+func (c *conn) Begin() (driver.Tx, error) {
+	panic(ErrTransactionsNotSupported)
 }
 
 // Connect simply returns the connection
-func (c *Conn) Connect(context.Context) (driver.Conn, error) {
+func (c *conn) Connect(context.Context) (driver.Conn, error) {
 	return c, nil
 }
 
 // Driver returns a Driver singleton
-func (c *Conn) Driver() driver.Driver {
+func (c *conn) Driver() driver.Driver {
 	return &Driver{}
 }
 
 // Ping checks the status of the ksqlDB cluster using the /info endpoint
-func (c *Conn) Ping(ctx context.Context) error {
+func (c *conn) Ping(ctx context.Context) error {
 	_, err := c.client.Info(ctx)
 	return err
 }
 
 // ResetSession is a placeholder for compatibility
-func (c *Conn) ResetSession(ctx context.Context) error {
+func (c *conn) ResetSession(ctx context.Context) error {
 	return nil
 }
 
 // IsValid is a placeholder for compatibility
-func (c *Conn) IsValid() bool {
+func (c *conn) IsValid() bool {
 	return true
 }
 
@@ -78,9 +80,13 @@ func (e *execResult) RowsAffected() (int64, error) {
 }
 
 // ExecContext executes any arbitrary ksql statements, except queries
-func (c *Conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	_, err := c.client.Exec(ctx, ksql.ExecPayload{
-		KSQL:              query,
+func (c *conn) ExecContext(ctx context.Context, stmt string, args []driver.NamedValue) (driver.Result, error) {
+	sql, err := buildStatement(stmt, args)
+	if err != nil {
+		return nil, err
+	}
+	_, err = c.client.Exec(ctx, ksql.ExecPayload{
+		KSQL:              sql,
 		StreamsProperties: loadStreamsProperties(args),
 	})
 	if err != nil {
@@ -94,7 +100,9 @@ func loadStreamsProperties(args []driver.NamedValue) ksql.StreamsProperties {
 	// check if the last arg is StreamsProperties
 	if len(args) > 0 {
 		last := args[len(args)-1]
-		props = last.Value.(ksql.StreamsProperties)
+		if p, ok := last.Value.(ksql.StreamsProperties); ok {
+			props = p
+		}
 	}
 	return props
 }
@@ -116,31 +124,8 @@ func parseQueryArgs(args []driver.NamedValue) (*ksql.QueryConfig, []driver.Named
 	return config, filteredArgs
 }
 
-type rowWrapper struct {
-	rows ksql.Rows
-}
-
-func (q *rowWrapper) Columns() []string {
-	return q.rows.Columns()
-}
-
-func (q *rowWrapper) Close() error {
-	return q.rows.Close()
-}
-
-func (q *rowWrapper) Next(dest []driver.Value) error {
-	in := make([]interface{}, len(dest))
-	if err := q.rows.Next(in); err != nil {
-		return err
-	}
-	for i := range dest {
-		dest[i] = in[i].(driver.Value)
-	}
-	return nil
-}
-
 // QueryContext runs a SELECT query via the ksqlDB client
-func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+func (c *conn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	conf, args := parseQueryArgs(args)
 	q, err := buildStatement(query, args)
 	if err != nil {
@@ -165,12 +150,12 @@ func (c *Conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 
 // Client exposes the underlying ksql client instance
-func (c *Conn) Client() ksql.Client {
+func (c *conn) Client() ksql.Client {
 	return c.client
 }
 
 // PrepareContext is a placeholder, prepared statements are not supported in ksqlDB
-func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	c.stmtNameCounter++
 	return PreparedStatement{
 		Name: strconv.Itoa(c.stmtNameCounter),
@@ -180,31 +165,38 @@ func (c *Conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 }
 
 // BeginTx is a placeholder, transactions are not supported
-func (c *Conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	return nil, ErrTransactionsNotSupported
+func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	panic(ErrTransactionsNotSupported)
 }
 
 // CheckNamedValue is used here to filter out config options from the final args
-func (c *Conn) CheckNamedValue(val *driver.NamedValue) error {
+func (c *conn) CheckNamedValue(val *driver.NamedValue) error {
 	if _, ok := val.Value.(ksql.QueryConfig); ok {
 		return driver.ErrRemoveArgument
 	}
 	return nil
 }
 
+func newConn(client ksql.Client) *conn {
+	return &conn{
+		client:             client,
+		preparedStatements: map[string]PreparedStatement{},
+	}
+}
+
 // Check that Conn implements the required interfaces
 var (
-	_ driver.Conn = &Conn{}
+	_ driver.Conn = &conn{}
 
-	_ driver.Connector       = &Conn{}
-	_ driver.Pinger          = &Conn{}
-	_ driver.SessionResetter = &Conn{}
-	_ driver.Validator       = &Conn{}
+	_ driver.Connector       = &conn{}
+	_ driver.Pinger          = &conn{}
+	_ driver.SessionResetter = &conn{}
+	_ driver.Validator       = &conn{}
 
-	_ driver.ExecerContext      = &Conn{}
-	_ driver.QueryerContext     = &Conn{}
-	_ driver.ConnPrepareContext = &Conn{}
-	_ driver.ConnBeginTx        = &Conn{}
+	_ driver.ExecerContext      = &conn{}
+	_ driver.QueryerContext     = &conn{}
+	_ driver.ConnPrepareContext = &conn{}
+	_ driver.ConnBeginTx        = &conn{}
 
-	_ driver.NamedValueChecker = &Conn{}
+	_ driver.NamedValueChecker = &conn{}
 )

@@ -14,7 +14,7 @@ type Connector struct {
 
 // Connect returns a new connection with access to the client
 func (c *Connector) Connect(ctx context.Context) (driver.Conn, error) {
-	return &Conn{client: c.client}, nil
+	return newConn(c.client), nil
 }
 
 // Driver returns a new driver instance
