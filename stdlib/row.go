@@ -23,12 +23,8 @@ func (q *rowWrapper) Next(dest []driver.Value) error {
 	if err := q.rows.Next(in); err != nil {
 		return err
 	}
-	j := 0
-	for i := range dest {
-		if v, ok := in[i].(driver.Value); ok {
-			dest[j] = v
-			j++
-		}
+	for i, col := range in {
+		dest[i] = col.(driver.Value)
 	}
 	return nil
 }

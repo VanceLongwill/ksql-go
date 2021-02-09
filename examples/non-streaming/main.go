@@ -13,7 +13,7 @@ type rowResult struct {
 	K  sql.NullString `db:"K"`
 	V1 sql.NullInt64  `db:"V1"`
 	V2 sql.NullString `db:"V2"`
-	V3 sql.NullInt64  `db:"V3"`
+	V3 sql.NullBool   `db:"V3"`
 }
 
 func run(ctx context.Context) error {
