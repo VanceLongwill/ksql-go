@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strconv"
 
-	ksql "github.com/vancelongwill/ksql/client"
+	ksql "github.com/vancelongwill/ksql-go/client"
 )
 
 var (

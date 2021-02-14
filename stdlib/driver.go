@@ -3,7 +3,7 @@ package stdlib
 import (
 	"database/sql/driver"
 
-	ksql "github.com/vancelongwill/ksql/client"
+	ksql "github.com/vancelongwill/ksql-go/client"
 )
 
 // Driver is a database/sql compatible driver

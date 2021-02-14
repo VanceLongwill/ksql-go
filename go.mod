@@ -1,4 +1,4 @@
-module github.com/vancelongwill/ksql
+module github.com/vancelongwill/ksql-go
 
 go 1.15
 

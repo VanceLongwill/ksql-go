@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	ksql "github.com/vancelongwill/ksql/client"
+	ksql "github.com/vancelongwill/ksql-go/client"
 )
 
 func TestQueryConfig(t *testing.T) {

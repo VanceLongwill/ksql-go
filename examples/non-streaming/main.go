@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"github.com/jmoiron/sqlx"
-	"github.com/vancelongwill/ksql/examples/seeder"
-	_ "github.com/vancelongwill/ksql/stdlib"
+	"github.com/vancelongwill/ksql-go/examples/seeder"
+	_ "github.com/vancelongwill/ksql-go/stdlib"
 	"log"
 )
 
