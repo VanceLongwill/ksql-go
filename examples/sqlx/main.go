@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	ksql "github.com/vancelongwill/ksql/client"
-	_ "github.com/vancelongwill/ksql/stdlib"
+	ksql "github.com/vancelongwill/ksql-go/client"
+	_ "github.com/vancelongwill/ksql-go/stdlib"
 
-	"github.com/vancelongwill/ksql/examples/seeder"
+	"github.com/vancelongwill/ksql-go/examples/seeder"
 )
 
 func run(ctx context.Context) error {

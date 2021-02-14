@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	ksql "github.com/vancelongwill/ksql/client"
-	"github.com/vancelongwill/ksql/examples/seeder"
-	"github.com/vancelongwill/ksql/stdlib"
+	ksql "github.com/vancelongwill/ksql-go/client"
+	"github.com/vancelongwill/ksql-go/examples/seeder"
+	"github.com/vancelongwill/ksql-go/stdlib"
 )
 
 func run(ctx context.Context) error {

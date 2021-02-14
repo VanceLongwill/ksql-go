@@ -7,8 +7,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	ksql "github.com/vancelongwill/ksql/client"
-	"github.com/vancelongwill/ksql/stdlib/mocks"
+	ksql "github.com/vancelongwill/ksql-go/client"
+	"github.com/vancelongwill/ksql-go/stdlib/mocks"
 )
 
 func TestConn(t *testing.T) {

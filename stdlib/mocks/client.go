@@ -7,7 +7,7 @@ package mocks
 import (
 	context "context"
 	gomock "github.com/golang/mock/gomock"
-	client "github.com/vancelongwill/ksql/client"
+	client "github.com/vancelongwill/ksql-go/client"
 	reflect "reflect"
 )
 

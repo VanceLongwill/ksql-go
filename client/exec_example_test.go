@@ -3,7 +3,7 @@ package client_test
 import (
 	"fmt"
 
-	ksql "github.com/vancelongwill/ksql/client"
+	ksql "github.com/vancelongwill/ksql-go/client"
 )
 
 func ExampleExecResult_As() {

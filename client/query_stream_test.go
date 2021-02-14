@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/vancelongwill/ksql/client/internal/testutils"
+	"github.com/vancelongwill/ksql-go/client/internal/testutils"
 )
 
 func TestQueryStream(t *testing.T) {
