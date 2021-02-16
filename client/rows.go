@@ -49,7 +49,11 @@ func (q *QueryRows) Next(dest []interface{}) error {
 	if !ok {
 		return errors.New("unable to get columns from row object")
 	}
-	dest, ok = cols.([]interface{})
+
+	for i, val := range cols.([]interface{}) {
+		dest[i] = val
+	}
+
 	if !ok {
 		return errors.New("unable to convert columns to slice")
 	}

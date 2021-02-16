@@ -8,6 +8,17 @@ https://docs.ksqldb.io/en/latest/developer-guide/ksqldb-clients/contributing/
 - Supports all the features of the ksqlDB REST API
 - Provides high level API for working with pull & pull queries
 
+
+## Developing 
+1. Pull the repo
+2. ```shell
+go mod download
+```
+3. ```shell
+make coverage
+```
+
+
 ## TODO:
 
 - [x] TLS support (use custom http client)
