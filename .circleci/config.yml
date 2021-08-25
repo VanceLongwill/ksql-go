@@ -28,10 +28,8 @@ jobs:
 
       - store_test_results:
           path: /tmp/test-reports
-orbs:
-  codecov: codecov/codecov@1.0.2
-jobs:
-  build:
-    steps:
+
       - codecov/upload:
           file:
+orbs:
+  codecov: codecov/codecov@1.0.2
