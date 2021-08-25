@@ -32,7 +32,7 @@ jobs:
           path: /tmp/test-reports
 
       - codecov/upload:
-          file: /tmp/test-reports/coverage.out
+          file: /tmp/test-reports/coverage.txt
 
 workflows:
   build-workflow:
