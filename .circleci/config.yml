@@ -7,6 +7,10 @@ jobs:
     working_directory: ~/repo
     docker:
       - image: circleci/golang:1.15.8
+
+    environment: # environment variables for the build itself
+      CODECOV_TOKEN: fd104ae2-cd88-44f9-ac2f-0c145e7baf60
+
     steps:
       - checkout
 
@@ -32,7 +36,6 @@ jobs:
           path: /tmp/test-reports
 
       - codecov/upload:
-          token: 'fd104ae2-cd88-44f9-ac2f-0c145e7baf60'
           file: /tmp/test-reports/coverage.out
 
 workflows:
