@@ -1,6 +1,7 @@
 # Kafka ksqlDB driver
 
 [![CircleCI](https://circleci.com/gh/VanceLongwill/ksql-go/tree/master.svg?style=svg)](https://circleci.com/gh/VanceLongwill/ksql-go/tree/master)
+[![codecov](https://codecov.io/gh/VanceLongwill/ksql-go/branch/master/graph/badge.svg?token=H3V2EA886S)](https://codecov.io/gh/VanceLongwill/ksql-go)
 
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/vancelongwill/ksql-go.svg)](https://pkg.go.dev/github.com/vancelongwill/ksql-go)
