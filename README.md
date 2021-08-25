@@ -18,7 +18,7 @@ This client has been developed with the goals outlined in the ksqlDB developer g
 
 - [GoDoc](https://pkg.go.dev/github.com/vancelongwill/ksql-go)
 - User guide *(coming soon)*
-- Runnable [examples](./examples/README.md) in the `examples/` directory
+- Runnable [examples](./examples/) in the `examples/` directory
 
 ## Features
 
