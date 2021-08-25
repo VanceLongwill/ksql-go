@@ -66,7 +66,7 @@ func run(ctx context.Context) error {
 }
 ```
 
-**Using a custom HTTP client** (for authentication etc)
+## Using a custom HTTP client (for authentication etc)
 
 
 ```go
@@ -80,7 +80,7 @@ func run(ctx context.Context) error {
 	db := sqlx.NewDb(sqlDB, "ksqldb")
 ```
 
-HTTP Basic Auth:
+### HTTP Basic Auth:
 
 ```go
 type basicAuth struct {
@@ -111,7 +111,7 @@ func run(ctx context.Context) error {
 }
 ```
 
-Oauth2 (with [x/oauth2](golang.org/x/oauth2/clientcredentials))
+### Oauth2 (with [x/oauth2](golang.org/x/oauth2/clientcredentials))
 
 ```go
 	creds := &clientcredentials.Config{
