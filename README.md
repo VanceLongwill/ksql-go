@@ -2,6 +2,8 @@
 
 [![CircleCI](https://circleci.com/gh/VanceLongwill/ksql-go/tree/master.svg?style=svg)](https://circleci.com/gh/VanceLongwill/ksql-go/tree/master)
 
+[![codecov](https://codecov.io/gh/VanceLongwill/ksql-go/branch/master/graph/badge.svg?token=H3V2EA886S)](https://codecov.io/gh/VanceLongwill/ksql-go)
+
 This project is currently an unofficial ksqlDB client until it reaches maturity.
 
 Once maturity it reached, the plan is to integrate it into the ksqlDB codebase and give it official support.
