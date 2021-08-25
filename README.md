@@ -33,7 +33,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
         
-	ksql "github.com/vancelongwill/ksql-go/client"
 	_ "github.com/vancelongwill/ksql-go/stdlib" // import the database/sql driver
 )
 
