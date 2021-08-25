@@ -20,7 +20,7 @@ type Query struct {
 	// QueryString is the text of the statement that started the query
 	QueryString string `json:"queryString"`
 	// Sinks are the streams and tables being written to by the query
-	Sinks string `json:"sinks"`
+	Sinks []string `json:"sinks"`
 	// ID is the query id
 	ID string `json:"id"`
 }
