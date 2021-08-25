@@ -66,6 +66,62 @@ func run(ctx context.Context) error {
 }
 ```
 
+## Using a custom HTTP client (for authentication etc)
+
+
+```go
+	// create a ksqldb client with a custom HTTP client (for auth etc)
+	httpClient := &http.Client{}
+	client := ksql.New("http://0.0.0.0:8088", ksql.WithHTTPClient(httpClient))
+
+        // convert to databse/sql connection
+	sqlDB := sql.OpenDB(stdlib.NewConnector(client))
+	// again, using jmoiron/sqlx to interact with the DB
+	db := sqlx.NewDb(sqlDB, "ksqldb")
+```
+
+### HTTP Basic Auth:
+
+```go
+type basicAuth struct {
+	Username string
+	Password string
+}
+
+func (bat basicAuth) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", fmt.Sprintf("Basic %s",
+		base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s",
+			bat.Username, bat.Password)))))
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+func run(ctx context.Context) error {
+	// create a ksqldb client with a custom HTTP client (for auth etc)
+	httpClient := &http.Client{
+		Transport: basicAuth{
+			Username: "youruser@email.com",
+			Password: "somepassword",
+		},
+	}
+	client := ksql.New("http://0.0.0.0:8088", ksql.WithHTTPClient(httpClient))
+
+	sqlDB := sql.OpenDB(stdlib.NewConnector(client))
+	db := sqlx.NewDb(sqlDB, "ksqldb")
+        ...
+}
+```
+
+### Oauth2 (with [x/oauth2](golang.org/x/oauth2/clientcredentials))
+
+```go
+	creds := &clientcredentials.Config{
+		ClientID:     "yourID",
+		ClientSecret: "yoursecret",
+		TokenURL:     "https://yourauthservice.com/oauth2/token",
+	}
+	client := ksql.New("http://0.0.0.0:8088", ksql.WithHTTPClient(creds.Client(ctx)))
+```
+
 ## Documentation
 
 - [GoDoc](https://pkg.go.dev/github.com/vancelongwill/ksql-go)
