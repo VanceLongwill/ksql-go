@@ -2,6 +2,9 @@
 
 [![CircleCI](https://circleci.com/gh/VanceLongwill/ksql-go/tree/master.svg?style=svg)](https://circleci.com/gh/VanceLongwill/ksql-go/tree/master)
 
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/vancelongwill/ksql-go.svg)](https://pkg.go.dev/github.com/vancelongwill/ksql-go)
+
 This project is currently an unofficial ksqlDB client until it reaches maturity.
 
 Once maturity it reached, the plan is to integrate it into the ksqlDB codebase and give it official support.
